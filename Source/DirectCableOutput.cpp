@@ -136,7 +136,7 @@ void DirectCableOutput::run() noexcept {
 bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept {
     const auto endpoint = target == skellcast::OutputTarget::Desktop
         ? findDesktopEndpoint() : findVbCable();
-    if (!endpoint) return false;
+    if (endpoint.Get() == nullptr) return false;
     const auto activeEndpointId = target == skellcast::OutputTarget::Desktop
         ? endpointId(endpoint.Get()) : std::wstring {};
     ComPtr<IAudioClient> client;
@@ -177,7 +177,7 @@ bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept
         if (target == skellcast::OutputTarget::Desktop &&
             std::chrono::steady_clock::now() >= nextDeviceCheck) {
             const auto selected = findDesktopEndpoint();
-            if (!selected || endpointId(selected.Get()) != activeEndpointId) {
+            if (selected.Get() == nullptr || endpointId(selected.Get()) != activeEndpointId) {
                 healthy = false;
                 break;
             }
