@@ -1,82 +1,66 @@
-# SkellCore VST Template
-Shared **Skell Audio** foundation for JUCE 8 C++17 VST3 plugins.
+# SKELL / CAST
 
-The former Skell VST Quickstart is preserved as a **small gain demo plugin**, with its original VST3 manufacturer, plugin code and bundle identity unchanged. Build a new plugin by choosing unique IDs; never reuse these demo IDs in commercial releases.
+**SkellCast — FL Studio master audio → Discord / OBS**, Windows x64 JUCE VST3 and receiver companion app. Independent original implementation; no Muse code or branding is used.
 
-## Contents
-- `SkellCore::DSP`: portable C++17 TempoClock, PhraseTracker, OnsetDetector, four-line FDNReverb, prototype 4× interpolated-peak limiter, PitchFormantEngine.
-- `SkellCore::UI`: JUCE LookAndFeel, colour themes and glow cache.
-- **Production DSP backend copies**: SkellyTune RealtimeTuner v3.3 and dependencies (MIT), exact DeEsser PhraseAwareDetector behavior in a namespaced copy, and Skelly Master MasteringEngine in a namespaced copy.
-- `SkellCore/backends/SkellyTuneBackend.h`: adapter matching production pitch backend to the shared `PitchFormantEngine`.
-- Separate portable CI (Windows + Linux) and Windows JUCE VST3 build pipeline.
+> **Status: v0.2 SOURCE PROJECT / PRE-RELEASE.** Portable Windows binaries are produced by the included GitHub Actions workflow or `scripts/Build-Windows.ps1`. Core protocol tests have been run; the Windows VST3 and actual FL Studio, Discord and OBS device routing require Windows verification. This version is not a Windows virtual audio driver and is not a cloud collaboration platform.
 
-## Generate a new plugin (recommended)
+## What it does
 
-```sh
-python tools/new_plugin.py "Skell Compressor" ../skell-compressor-vst --code SC01
+- **Stereo uncompressed 32-bit floating-point local transport.** Audio goes from the plugin to `127.0.0.1:44991` via UDP, not onto the public Internet.
+- **Nonblocking FL Studio processing.** Plugin queues audio to a sender thread rather than performing socket I/O inside the realtime audio callback. Sends a copy; the FL Studio master track is not changed.
+- **Exactly one plugin control:** a large ON/OFF button. Its pilot light glows **green = sharing enabled** or **red = sharing disabled**. Unity-level audio is sent; there is no gain slider or meter.
+- **Receiver app** shows input activity, source sample rate, packet gaps, and a standard JUCE Windows device selector; 60 ms input prebuffer and linear resampling for different DAW/device rates.
+- **Output routing** through a preinstalled virtual audio device like VB-CABLE to Discord or OBS.
+- **Vector-only compact dark/neon-green UI (340 × 184).** Fixed-size VST3 editor, persistent ON/OFF switch. Receiver retains its Windows device setup screen.
+
+## Setup for FL Studio → Discord
+
+1. Install **VB-CABLE** from its official developer, [VB-Audio](https://vb-audio.com/Cable/), then restart Windows if the installer requests it. VB-CABLE is a third-party virtual audio driver **not included** in SkellCast.
+2. Obtain the Windows build artifact from GitHub Actions or build from source (below). Copy the **entire `SkellCast.vst3` folder** to `C:\Program Files\Common Files\VST3\` (Administrator permissions may be required). Put `SkellCastReceiver.exe` anywhere you can run it.
+3. In FL Studio, rescan VST3 plugins. Add **SkellCast** to the last effect slot of the **Master mixer track**, after effects you wish to broadcast.
+4. Open **SkellCastReceiver.exe**. In its audio-device area, choose the regular Windows shared-audio system if offered (not an ASIO device already owned by FL Studio). Choose **CABLE Input (VB-Audio Virtual Cable)** as the *output*. Click **START ROUTING**. Be careful not to leave the output on your speakers; the app would play the same audio there again.
+5. In the SkellCast VST3, press the single button until its indicator is **green / ON**, and play a project. When the receiver detects frames, it should say **INCOMING AUDIO DETECTED**. Press the button again for **red / OFF** to stop sending new frames.
+6. Discord → **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. Leave your Discord *Output Device* as your headphones. Music is frequently damaged by Discord's processing: disable noise suppression, echo cancellation and automatic gain control when practical; use a voice activity / input sensitivity suitable for music.
+7. You can keep your FL Studio output set to your original audio interface. The plugin copies the signal without changing FL Studio's usual playback.
+
+**Important:** If you want to speak through your actual microphone **at the same time as the FL master stream**, you must mix the mic into the same virtual input (e.g. via Voicemeeter) or a future mic-mixing mode. Discord typically accepts only one mic/input device at a time. Also, Discord still compresses its voice channels: SkellCast's *local transport* is uncompressed, not the entire Discord connection.
+
+## Setup for FL Studio → OBS
+
+1. Follow setup steps 1–5 above.
+2. OBS Studio → **Sources → + → Audio Input Capture → Create New**, and select **CABLE Output (VB-Audio Virtual Cable)**.
+3. Use OBS's Audio Mixer to check for duplicate audio. Add a *separate* microphone source if needed. In Advanced Audio Properties, decide if/where you want to monitor.
+
+## Building on Windows
+
+Requirements: Windows 10/11 x64, Visual Studio 2022 with **Desktop development with C++**, CMake 3.25+, Git, Internet connectivity during initial JUCE download. The CMake build fetches JUCE **8.0.16-security**, or accepts a local JUCE checkout with `-DJUCE_DIR=C:/path/to/JUCE`.
+
+From PowerShell inside the source directory:
+
+```powershell
+./scripts/Build-Windows.ps1
 ```
 
-This creates an independent VST3 + Standalone project with an immutable SkellCore dependency, unique plugin code, generated CI, and the original quickstart gain processor. Pick a different four-character code for **every** plugin. Once you rename the GitHub template repository, use `--core-repo https://github.com/skellyruno/skellcore-vst-template.git`.
+Release files are assembled into `out/SkellCast-Windows-x64/`. Or push the repository to GitHub and trigger **Actions → Windows VST3 + Receiver → Run workflow**; download the `SkellCast-Windows-x64` artifact.
 
-## Low-end PC performance and safety
+The scripts **build** a `.vst3` and `.exe`; this source ZIP does **not** contain compiled Windows binaries. They are not code-signed. Commercial redistribution must comply with the relevant [JUCE licensing terms](https://juce.com/legal/juce-8-licence/) and applicable third-party software licenses.
 
-SkellCore offers an opt-in `TruePeakLimiter::Quality::Economy` detector (2 phases × 8 taps, versus default Standard's 4 × 16), modulo-free FIR reads, bounded buffer allocations, pre-prepare bypass safety, a bounded UI glow cache, and actual Release-mode allocation/parity tests. Read [performance details](SkellCore/PERFORMANCE.md) before enabling Economy in any shipped plugin.
+## Technical notes and boundaries
 
-## v0.4 host safety and polished starter UI
+| Feature | v0.2 |
+| --- | --- |
+| 1 FL Studio master / 2-channel stereo | Yes |
+| FL host output unaffected | Yes |
+| Local transmission | uncompressed float32 PCM over 127.0.0.1 UDP |
+| Network/cloud transmission | No |
+| Windows Discord and OBS | Via separate VB-CABLE virtual driver |
+| Audio resampling | Linear (quality can be improved) |
+| Receiver prebuffer | Approximately 60 ms plus device/host buffering |
+| Auto-installed virtual mic | No |
+| Integrated mic + DAW mixing | Not yet |
+| Multiple concurrent plugin instances | Not supported as a mixed bus; place only one on Master |
+| End-to-end Windows routing verified | Requires local test |
 
-The pitch/formant adapter is now lifecycle-aware: before prepare, after backend replacement, or with an incompatible channel layout, it safely passes sanitized dry audio rather than returning an undefined output. The SkellyTune DSP algorithm is unchanged; new parity tests compare it to the original at 44.1/48/96 kHz with variable host blocks and six simultaneous instances.
+**The red/green light indicates only the VST3 ON/OFF state, not whether Discord, OBS, VB-CABLE, or the receiver is connected.** A brief buffered tail may play after switching OFF. Adjust receiver/Discord levels in their respective apps.
 
-The starter gain effect now smooths host automation over 15 ms to reduce zipper clicks. Its UI is compact, resizable and vector-drawn with the SkellCore neon theme. The demo is built as both VST3 and Standalone for testing. **No existing demo plugin IDs or preset parameter IDs were changed.**
-
-As always, a CI build and synthetic DSP checks do not replace real Windows FL Studio compatibility and low-end CPU validation.
-
-## Build
-```sh
-cmake -S . -B build -DJUCE_PATH=/path/to/JUCE
-cmake --build build --config Release
-```
-
-`JUCE_PATH` is optional; CMake otherwise fetches pinned JUCE 8.0.12.
-```sh
-cmake -S SkellCore -B build-core -DSKELLCORE_BUILD_TESTS=ON
-cmake --build build-core --config Release
-ctest --test-dir build-core -C Release --output-on-failure
-```
-
-## Reuse in other plugin repos
-Copy `SkellCore/` into your monorepo, or FetchContent the **immutable commit** of this template. Example from a consumer:
-```cmake
-include(FetchContent)
-FetchContent_Declare(SkellCore
-  GIT_REPOSITORY https://github.com/skellyruno/skell-vst-template.git
-  GIT_TAG <IMMUTABLE_COMMIT_SHA>
-  SOURCE_SUBDIR SkellCore)
-FetchContent_MakeAvailable(SkellCore)
-target_link_libraries(MyPlugin PRIVATE SkellCore::DSP SkellCore::UI)
-```
-Replace `MyPlugin` with the JUCE target. Once the repository itself is renamed on GitHub, update the URL to `skellcore-vst-template` while pinning the immutable revision. Repositories renamed by GitHub redirect old clones but new URLs should be adopted in each plugin.
-
-## Integration APIs
-```cpp
-#include <SkellCore/Core.h>
-#include <SkellCore/backends/SkellyTuneBackend.h>
-skellcore::backends::SkellyTuneBackend tuning;
-skellcore::PitchFormantEngine pitch;
-pitch.setBackend(&tuning);
-pitch.prepare(48000, 2);
-auto latency = pitch.latencySamples(); // Report from prepareToPlay.
-```
-The production tuner exposes block processing and stable declared dry/transient latency. Do not change PDC inside processBlock and do not confuse variable pitch-cycle source age with fixed host delay.
-
-Include `<SkellCore/backends/deesser/PhraseAwareDetector.h>` and use `skellcore::deesser::PhraseAwareDetector` for the existing DeEsser logic, and `<SkellCore/backends/master/MasteringEngine.h>` for the sampled-at-oversampled-rate mastering core. The mastering engine needs a high-quality *external* oversampler. The generic `TruePeakLimiter` is experimental; no compliance claim.
-
-## Status and migration
-This is **v0.3 shared-core work**. Source import does not automatically migrate any already released plugin. Existing DAW automation, UI layout, plugin IDs, and audio behavior must stay unchanged until validated per-plugin.
-
-- Tuning, phrase aware, and mastering algorithms: imported, require A/B tests before plugin adoption.
-- FDN reverb, prototype true peak limiter, onset tracking: functional portable modules, not production-certified.
-- Host tempo / JUCE UI: available, UI not mandatory for a plugin.
-- Choir: links pinned SkellCore target on separate PR; current sound unchanged.
-- AdlibLab / Silence Designer / other new plugins: opt in as their CMake projects are ready.
-
-See [SkellCore/README.md](SkellCore/README.md) and [GitHub migration tracker](https://github.com/skellyruno/skell-vst-template/issues/2).
+The current receiver is deliberately simple. Heavy CPU stalls or audio-device changes may cause discontinuities; restarting `START ROUTING` is advised after changing FL Studio's sample rate or switching output devices. For extremely demanding professional use, follow the regression checklist in `TESTING.md` and replace the linear resampler with a windowed-sinc implementation.

@@ -1,17 +1,23 @@
 #pragma once
+
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
-#include <SkellCore/UI.h>
-class SkellAudioProcessorEditor final : public juce::AudioProcessorEditor {
+
+// One interactive control: a two-state transmit button with a red/green pilot light.
+class SkellCastPowerButton final : public juce::Button {
 public:
-  explicit SkellAudioProcessorEditor(SkellAudioProcessor&);
-  ~SkellAudioProcessorEditor() override;
-  void paint(juce::Graphics&) override;
-  void resized() override;
+    SkellCastPowerButton();
+    void paintButton(juce::Graphics& g, bool highlighted, bool pressed) override;
+};
+
+class SkellCastEditor final : public juce::AudioProcessorEditor {
+public:
+    explicit SkellCastEditor(SkellCastProcessor&);
+    ~SkellCastEditor() override = default;
+    void paint(juce::Graphics&) override;
+    void resized() override;
 private:
-  skellcore::ui::LookAndFeel skin_;
-  juce::Slider gain;
-  juce::Label title;
-  juce::AudioProcessorValueTreeState::SliderAttachment gainAttachment;
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellAudioProcessorEditor)
+    SkellCastPowerButton powerButton_;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sendAttachment_;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellCastEditor)
 };
