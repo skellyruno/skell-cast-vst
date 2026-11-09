@@ -1,51 +1,80 @@
-name: Build SkellCore VST Template (Windows VST3 + Standalone)
-# Iterative plugin development often pushes many commits. Cancel superseded
-# branch/PR runs to avoid multiple resource-heavy JUCE builds in parallel.
+name: Windows VST3 Only
+
+# SkellCast is a plugin, not a standalone program.
+# Always package and validate the Windows VST3 bundle, never an .exe.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'Source/**'
+      - 'Tests/**'
+      - 'scripts/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'Source/**'
+      - 'Tests/**'
+      - 'scripts/**'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-on:
-  workflow_dispatch:
-  pull_request:
-    paths:
-      - 'SkellCore/**'
-      - 'CMakeLists.txt'
-      - 'Source/**'
-      - '.github/workflows/build.yml'
-
 jobs:
   build:
+    name: Build and verify SkellCast VST3
     runs-on: windows-latest
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -S . -B build -A x64
-      - name: Build
-        run: cmake --build build --config Release --parallel 2
-      - name: Package
-        shell: pwsh
-        run: |
-          $plugin = Get-ChildItem -Path build -Directory -Recurse -Filter '*.vst3' | Select-Object -First 1
-          if (-not $plugin) { throw 'VST3 bundle missing' }
-          Compress-Archive -Path $plugin.FullName -DestinationPath SkellCore-Template-Windows-VST3.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          name: SkellCore-Template-Windows-VST3
-          path: SkellCore-Template-Windows-VST3.zip
-          if-no-files-found: error
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Package Standalone
-        shell: pwsh
+      - name: Configure (Windows x64, JUCE, core tests)
         run: |
-          $app = Get-ChildItem -Path build -File -Recurse -Filter 'Skell Quickstart.exe' | Select-Object -First 1
-          if (-not $app) { throw 'Skell Quickstart standalone executable missing' }
-          Compress-Archive -Path $app.FullName -DestinationPath SkellCore-Template-Windows-Standalone.zip
-      - uses: actions/upload-artifact@v4
+          cmake -S . -B build -A x64 -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed' }
+
+      - name: Build Release
+        run: |
+          cmake --build build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'SkellCast VST3 build failed' }
+
+      - name: Run core tests
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'SkellCast core tests failed' }
+
+      - name: Package validated VST3 only
+        run: |
+          & ./scripts/Package-Windows.ps1
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'VST3 packaging failed' }
+
+      - name: Verify distributable Windows binary
+        run: |
+          $package = 'out/SkellCast-VST3-Windows-x64'
+          $bundle = Join-Path $package 'SkellCast.vst3'
+          $binary = Join-Path $bundle 'Contents/x86_64-win/SkellCast.vst3'
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+            throw 'Compiled SkellCast.vst3 Windows binary missing'
+          }
+          $bytes = (Get-Item -LiteralPath $binary).Length
+          if ($bytes -lt 10000) { throw "VST3 binary unexpectedly small: $bytes bytes" }
+          Write-Host "Validated SkellCast.vst3 ($bytes bytes). No standalone receiver required."
+
+      - name: Upload SkellCast VST3
+        uses: actions/upload-artifact@v4
         with:
-          retention-days: 1
-          name: SkellCore-Template-Windows-Standalone
-          path: SkellCore-Template-Windows-Standalone.zip
+          name: SkellCast-VST3-Windows-x64
+          path: out/SkellCast-VST3-Windows-x64/
           if-no-files-found: error
+          retention-days: 14
