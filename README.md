@@ -1,66 +1,42 @@
-# SKELL / CAST
+# SkellCast v0.3 — **one-button VST3 only**
 
-**SkellCast — FL Studio master audio → Discord / OBS**, Windows x64 JUCE VST3 and receiver companion app. Independent original implementation; no Muse code or branding is used.
+This replaces the old SkellCast sender/receiver setup. There is **NO receiver application** and **NO background executable**. The plugin itself writes FL Studio's stereo mix directly to the Windows **VB-CABLE** playback endpoint using shared-mode WASAPI. No UDP networking or cloud transport is involved.
 
-> **Status: v0.2 SOURCE PROJECT / PRE-RELEASE.** Portable Windows binaries are produced by the included GitHub Actions workflow or `scripts/Build-Windows.ps1`. Core protocol tests have been run; the Windows VST3 and actual FL Studio, Discord and OBS device routing require Windows verification. This version is not a Windows virtual audio driver and is not a cloud collaboration platform.
+**Requirements:** Windows 10/11 x64, a DAW supporting VST3 (FL Studio), and a third-party virtual audio cable **VB-CABLE** installed from [VB-Audio](https://vb-audio.com/Cable/). Windows must see the active render/playback device named **CABLE Input (VB-Audio Virtual Cable)**. This project does not install a virtual microphone driver. It also does not include any third-party drivers.
 
-## What it does
+## How to use with Discord
 
-- **Stereo uncompressed 32-bit floating-point local transport.** Audio goes from the plugin to `127.0.0.1:44991` via UDP, not onto the public Internet.
-- **Nonblocking FL Studio processing.** Plugin queues audio to a sender thread rather than performing socket I/O inside the realtime audio callback. Sends a copy; the FL Studio master track is not changed.
-- **Exactly one plugin control:** a large ON/OFF button. Its pilot light glows **green = sharing enabled** or **red = sharing disabled**. Unity-level audio is sent; there is no gain slider or meter.
-- **Receiver app** shows input activity, source sample rate, packet gaps, and a standard JUCE Windows device selector; 60 ms input prebuffer and linear resampling for different DAW/device rates.
-- **Output routing** through a preinstalled virtual audio device like VB-CABLE to Discord or OBS.
-- **Vector-only compact dark/neon-green UI (340 × 184).** Fixed-size VST3 editor, persistent ON/OFF switch. Receiver retains its Windows device setup screen.
+1. Install VB-CABLE (restart Windows if prompted) from [VB-Audio](https://vb-audio.com/Cable/).
+2. Build the plugin and install the entire `SkellCast.vst3` directory into `C:\Program Files\Common Files\VST3\`. Rescan plugins in FL Studio.
+3. Put SkellCast as the **last effect on the FL Studio Master mixer**. Keep FL Studio's usual speakers/headphones or audio-interface output unchanged.
+4. Open SkellCast. There is exactly **one ON/OFF button**: **green = sharing enabled; red = sharing disabled**. The plugin automatically finds and sends to the active VB-CABLE playback endpoint. There are no audio sliders, meters, or device selectors.
+5. In Discord → Voice & Video, set the **input device** to **CABLE Output (VB-Audio Virtual Cable)**. Keep its output device on your headphones. Discord noise suppression, echo cancellation, and automatic gain can degrade music, so turn them off when appropriate.
 
-## Setup for FL Studio → Discord
+For OBS Studio, add an **Audio Input Capture** source selecting **CABLE Output**. Do not duplicate the same audio via desktop capture unless you want doubled playback.
 
-1. Install **VB-CABLE** from its official developer, [VB-Audio](https://vb-audio.com/Cable/), then restart Windows if the installer requests it. VB-CABLE is a third-party virtual audio driver **not included** in SkellCast.
-2. Obtain the Windows build artifact from GitHub Actions or build from source (below). Copy the **entire `SkellCast.vst3` folder** to `C:\Program Files\Common Files\VST3\` (Administrator permissions may be required). Put `SkellCastReceiver.exe` anywhere you can run it.
-3. In FL Studio, rescan VST3 plugins. Add **SkellCast** to the last effect slot of the **Master mixer track**, after effects you wish to broadcast.
-4. Open **SkellCastReceiver.exe**. In its audio-device area, choose the regular Windows shared-audio system if offered (not an ASIO device already owned by FL Studio). Choose **CABLE Input (VB-Audio Virtual Cable)** as the *output*. Click **START ROUTING**. Be careful not to leave the output on your speakers; the app would play the same audio there again.
-5. In the SkellCast VST3, press the single button until its indicator is **green / ON**, and play a project. When the receiver detects frames, it should say **INCOMING AUDIO DETECTED**. Press the button again for **red / OFF** to stop sending new frames.
-6. Discord → **User Settings → Voice & Video → Input Device → CABLE Output (VB-Audio Virtual Cable)**. Leave your Discord *Output Device* as your headphones. Music is frequently damaged by Discord's processing: disable noise suppression, echo cancellation and automatic gain control when practical; use a voice activity / input sensitivity suitable for music.
-7. You can keep your FL Studio output set to your original audio interface. The plugin copies the signal without changing FL Studio's usual playback.
+**If VB-CABLE is missing or not detected, no audio will be sent anywhere** (the plugin will NOT fall back to speakers). The green light reflects the user's ON selection, **not confirmed device connection**. The plugin retries discovery automatically. For Discord to hear your microphone as well, you need a separate microphone mixer such as Voicemeeter or route your mic into FL Studio deliberately (be careful about feedback).
 
-**Important:** If you want to speak through your actual microphone **at the same time as the FL master stream**, you must mix the mic into the same virtual input (e.g. via Voicemeeter) or a future mic-mixing mode. Discord typically accepts only one mic/input device at a time. Also, Discord still compresses its voice channels: SkellCast's *local transport* is uncompressed, not the entire Discord connection.
+## Build
 
-## Setup for FL Studio → OBS
+Requires Windows x64, Visual Studio 2022/2026 with C++ desktop workload, CMake 3.25+, Git and an internet connection to fetch JUCE 8.0.17-security (or set `-DJUCE_DIR=...` to a local JUCE checkout). The specific previous error in JUCE's CMake configuration is fixed with `LANGUAGES C CXX`.
 
-1. Follow setup steps 1–5 above.
-2. OBS Studio → **Sources → + → Audio Input Capture → Create New**, and select **CABLE Output (VB-Audio Virtual Cable)**.
-3. Use OBS's Audio Mixer to check for duplicate audio. Add a *separate* microphone source if needed. In Advanced Audio Properties, decide if/where you want to monitor.
-
-## Building on Windows
-
-Requirements: Windows 10/11 x64, Visual Studio 2022 with **Desktop development with C++**, CMake 3.25+, Git, Internet connectivity during initial JUCE download. The CMake build fetches JUCE **8.0.16-security**, or accepts a local JUCE checkout with `-DJUCE_DIR=C:/path/to/JUCE`.
-
-From PowerShell inside the source directory:
+From PowerShell in the extracted `skellcast-source` directory:
 
 ```powershell
 ./scripts/Build-Windows.ps1
 ```
 
-Release files are assembled into `out/SkellCast-Windows-x64/`. Or push the repository to GitHub and trigger **Actions → Windows VST3 + Receiver → Run workflow**; download the `SkellCast-Windows-x64` artifact.
+Or push the source to GitHub and use **Actions → Windows VST3 Only → Run workflow**, and download the `SkellCast-VST3-Windows-x64` artifact. There will be **no `SkellCastReceiver.exe`**. If you have a stale build tree configured with another Visual Studio generator, delete **only** the `build` directory then rebuild. Bundled JUCE source may require license compliance for distribution.
 
-The scripts **build** a `.vst3` and `.exe`; this source ZIP does **not** contain compiled Windows binaries. They are not code-signed. Commercial redistribution must comply with the relevant [JUCE licensing terms](https://juce.com/legal/juce-8-licence/) and applicable third-party software licenses.
+## Design and limitations
 
-## Technical notes and boundaries
+- **No change to FL Studio's master audio**: passthrough in `processBlock()`, with an independent copy to a nonblocking SPSC queue. The Windows WASAPI render client runs on its **own plugin-owned worker thread**. It uses Windows shared-mode audio conversion as necessary when FL sample rate differs from VB-CABLE's device mix format.
+- Only transmits when the saved ON/OFF parameter is ON. Turning OFF stops writing and closes the output stream; Windows may have ~30 ms of already-buffered audio. Start state defaults to OFF and is saved with the project.
+- Only auto-connects to the first active Windows render device matching a **VB-Audio CABLE Input** name. Renamed or nonstandard cables will not be detected without modifying source.
+- Queued PCM floats are clipped to [-1, 1] for safe device output. FIFO is fixed-size (16384 frames), and backlog beyond about 100 ms is reduced to avoid progressively increasing delay. Underflow outputs silence.
+- Best for **one SkellCast instance** on the Master mixer; multiple instances output into the same virtual device and may combine duplicate signals. On stop/start or device reconnect, short glitches are possible. Loopback routes that feed this signal back into FL Studio can create feedback.
+- This source ZIP contains C++ **source**, not a precompiled Windows VST3. **Windows compilation and real-world FL Studio/Discord validation have not been run here.** Run the checklist in `TESTING.md`.
 
-| Feature | v0.2 |
-| --- | --- |
-| 1 FL Studio master / 2-channel stereo | Yes |
-| FL host output unaffected | Yes |
-| Local transmission | uncompressed float32 PCM over 127.0.0.1 UDP |
-| Network/cloud transmission | No |
-| Windows Discord and OBS | Via separate VB-CABLE virtual driver |
-| Audio resampling | Linear (quality can be improved) |
-| Receiver prebuffer | Approximately 60 ms plus device/host buffering |
-| Auto-installed virtual mic | No |
-| Integrated mic + DAW mixing | Not yet |
-| Multiple concurrent plugin instances | Not supported as a mixed bus; place only one on Master |
-| End-to-end Windows routing verified | Requires local test |
+## Why VB-CABLE is still necessary
 
-**The red/green light indicates only the VST3 ON/OFF state, not whether Discord, OBS, VB-CABLE, or the receiver is connected.** A brief buffered tail may play after switching OFF. Adjust receiver/Discord levels in their respective apps.
-
-The current receiver is deliberately simple. Heavy CPU stalls or audio-device changes may cause discontinuities; restarting `START ROUTING` is advised after changing FL Studio's sample rate or switching output devices. For extremely demanding professional use, follow the regression checklist in `TESTING.md` and replace the linear resampler with a windowed-sinc implementation.
+Discord receives signals from operating-system recording devices. VST3 plugins aren't recording devices and can't add a microphone input by themselves. Integrating a custom signed Windows audio driver is a separate, significantly larger project. This revision removes only the separate *SkellCast receiver application*, not the virtual audio device required to connect into Discord.

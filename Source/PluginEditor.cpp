@@ -11,7 +11,7 @@ const juce::Colour secondary {0xff809287};
 
 SkellCastPowerButton::SkellCastPowerButton() : juce::Button("Share audio") {
     setClickingTogglesState(true);
-    setTooltip("Send FL Studio audio to the SkellCast receiver (ON/OFF)");
+    setTooltip("Send FL Studio audio directly to VB-CABLE (ON/OFF)");
 }
 
 void SkellCastPowerButton::paintButton(juce::Graphics& g, bool highlighted, bool pressed) {

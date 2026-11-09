@@ -1,15 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
-project(SkellCast VERSION 0.2.0 LANGUAGES CXX)
-
+# JUCE requires both languages even when the plugin code itself is C++.
+project(SkellCast VERSION 0.3.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CTest)
-option(SKELLCAST_CORE_ONLY "Build protocol tests without downloading JUCE" OFF)
+option(SKELLCAST_CORE_ONLY "Build FIFO tests without downloading JUCE" OFF)
 if(SKELLCAST_CORE_ONLY)
     add_executable(SkellCastTests Tests/core_tests.cpp)
     target_include_directories(SkellCastTests PRIVATE Source)
     add_test(NAME SkellCastCoreTests COMMAND SkellCastTests)
     return()
+endif()
+if(NOT WIN32)
+    message(FATAL_ERROR "Direct SkellCast output requires Windows WASAPI. For portable tests set SKELLCAST_CORE_ONLY=ON.")
 endif()
 
 option(SKELLCAST_FETCH_JUCE "Fetch JUCE at configure time if JUCE_DIR isn't specified" ON)
@@ -19,7 +22,7 @@ elseif(SKELLCAST_FETCH_JUCE)
     include(FetchContent)
     FetchContent_Declare(juce
         GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-        GIT_TAG 8.0.16-security
+        GIT_TAG 8.0.17-security
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(juce)
 else()
@@ -42,22 +45,17 @@ juce_add_plugin(SkellCast
 juce_generate_juce_header(SkellCast)
 target_sources(SkellCast PRIVATE
     Source/PluginProcessor.cpp Source/PluginProcessor.h
-    Source/PluginEditor.cpp Source/PluginEditor.h Source/BridgeProtocol.h)
+    Source/PluginEditor.cpp Source/PluginEditor.h
+    Source/DirectCableOutput.cpp Source/DirectCableOutput.h
+    Source/AudioFifo.h)
 target_compile_definitions(SkellCast PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(SkellCast PRIVATE
-    juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags
-    juce::juce_recommended_warning_flags juce::juce_recommended_lto_flags)
-
-juce_add_gui_app(SkellCastReceiver
-    COMPANY_NAME "Skelly"
-    PRODUCT_NAME "SkellCastReceiver")
-juce_generate_juce_header(SkellCastReceiver)
-target_sources(SkellCastReceiver PRIVATE Source/ReceiverMain.cpp Source/BridgeProtocol.h)
-target_compile_definitions(SkellCastReceiver PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
-target_link_libraries(SkellCastReceiver PRIVATE
-    juce::juce_audio_utils juce::juce_recommended_config_flags
-    juce::juce_recommended_warning_flags juce::juce_recommended_lto_flags)
+    juce::juce_audio_utils juce::juce_dsp
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+    juce::juce_recommended_lto_flags
+    ole32 uuid propsys)
 
 if(BUILD_TESTING)
     add_executable(SkellCastTests Tests/core_tests.cpp)

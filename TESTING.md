@@ -1,31 +1,27 @@
-# SkellCast — verification checklist
+# SkellCast v0.3 verification checklist
 
-## Automated
-- [x] Core packet layout, length/magic validation and ring round-trip (`Tests/core_tests.cpp`, Linux GCC).
-- [ ] Windows x64 JUCE VST3 and receiver compile via GitHub Actions (not yet run for this delivery).
-- [ ] Plugin inspector / vst3validator for parameters, state restore, bus layouts and host reload.
+- [x] VST3-only source target. No receiver GUI target, UDP transport, or extra EXE.
+- [x] CMake project enables `LANGUAGES C CXX` to address the reported JUCE error.
+- [ ] Compile VST3 with Windows Visual Studio 2022 / 2026 and JUCE 8.0.17-security.
+- [ ] Run standalone VST3 validator, inspect every plug-in entry point/bus/parameter/state restore.
+- [ ] Verify ON with VB-CABLE routes audio to Discord's **CABLE Output** input; red/OFF stops it.
+- [ ] Verify ON with VB-CABLE absent or unplugged sends **nothing to default speakers**, and reconnect after installation.
+- [ ] Open/close FL Studio UI rapidly and unload plug-in repeatedly. No worker-thread shutdown hangs.
+- [ ] Verify FL Studio Master native output is bitwise unchanged when VST3 is enabled or disabled.
+- [ ] Test mono/stereo bus layouts, 44.1/48/96/192 kHz, 64/128/512/2048 block sizes, FL stop/start.
+- [ ] Test on Windows where VB-CABLE playback device format differs from FL Studio's sample rate.
+- [ ] Test red/OFF after green/ON: no lingering signal beyond a short Windows audio buffer.
+- [ ] Test a 30-minute session, device disconnect/reconnect, host transport seek and pause, heavy CPU load.
+- [ ] Test other Windows capture software (OBS) and confirm no doubled monitor channels.
+- [ ] Check old Receiver installation is unused and no `SkellCastReceiver.exe` is shipped.
+- [ ] Run `ctest --test-dir build -C Release --output-on-failure` on Windows.
 
-## FL Studio (manual Windows test)
-- [ ] Load on Master; monitor original master. Confirm **no attenuation** and exact rendered output with Transmit OFF and ON.
-- [ ] Play 44.1, 48, 88.2, 96, 192 kHz sessions with buffers 64, 128, 256, 512 and 2048 samples; check level and dropouts.
-- [ ] Pause, resume, reposition song and switch transport; inspect receiver for leftover audio and stuttering.
-- [ ] Click the only ON/OFF button and automate the send parameter; verify green = ON and red = OFF, and ensure FL Studio master audio never changes.
-- [ ] Open and close plugin UI repeatedly and shut down FL Studio; check no hangs and persistent send state after save/reload. Confirm there are no gain sliders, meters, or extra plugin controls.
-- [ ] Test receiver launched before and after FL Studio; stop/restart receiver and switch VB-CABLE output.
-- [ ] 30-minute loop plus sample rate/device change stress test (latency, drift, overflow, device reacquire).
+Core FIFO multithreaded tests can run without JUCE on Linux/macOS:
 
-## Routing (manual Windows test)
-- [ ] Discord Input Device = **CABLE Output**; verify friend hears only FL Studio and not microphone by default.
-- [ ] Discord noise reduction, echo cancellation, automatic gain and input sensitivity tailored for music.
-- [ ] OBS Audio Input Capture = **CABLE Output**; verify levels and no duplicate captures.
-- [ ] Confirm only one receiver can bind to UDP port 44991 and that a clear error appears if port is occupied.
-- [ ] Check VB-CABLE routing remains silent until Start Routing and plugin ON; allow for a brief prebuffered tail when switching OFF.
-- [ ] Confirm no accidental feedback when FL Studio input source is an independent hardware microphone.
+```bash
+cmake -S . -B build-core -DSKELLCAST_CORE_ONLY=ON
+cmake --build build-core
+ctest --test-dir build-core --output-on-failure
+```
 
-## Later engineering milestones
-- [ ] Bandlimited/sinc sample-rate conversion with measured clock-drift management.
-- [ ] Smooth fade-in/out and packet discontinuity handling; packet timeline / sequence-aware jitter control.
-- [ ] Receiver device auto-detection and safe default / clear accidental-speaker warnings.
-- [ ] Explicit connection handshake, robust multiple-instance routing, stable receiver shutdown/reconnect.
-- [ ] Optional mic blend in receiver with echo/feedback avoidance.
-- [ ] User-level Windows installer, verified code-signed builds, complete GUI accessibility.
+**Known limitations:** green means **user-enabled**, not device-connected. First active device with standard VB-Audio CABLE Input name is selected automatically. Windows WASAPI shared mode and third-party cable driver determine the final output latency and device format. The Windows integration remains unverified until the above manual tests are done.

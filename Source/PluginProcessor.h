@@ -1,6 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
-#include "BridgeProtocol.h"
+#include "DirectCableOutput.h"
 
 class SkellCastProcessor final : public juce::AudioProcessor {
 public:
@@ -26,25 +26,9 @@ public:
     void setStateInformation(const void*, int) override;
 
     juce::AudioProcessorValueTreeState state;
-    std::atomic<std::uint64_t> droppedPackets {0};
 
 private:
-    class SenderThread final : private juce::Thread {
-    public:
-        explicit SenderThread(SkellCastProcessor& owner);
-        ~SenderThread() override;
-        void start();
-        void stop();
-        bool enqueue(const skellcast::Packet& p) noexcept { return queue_.push(p); }
-    private:
-        void run() override;
-        SkellCastProcessor& owner_;
-        skellcast::PacketQueue queue_;
-        JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SenderThread)
-    };
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();
-    SenderThread sender_;
-    std::uint32_t sequence_ = 0;
-    std::uint32_t rate_ = 48000;
+    DirectCableOutput output_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellCastProcessor)
 };
