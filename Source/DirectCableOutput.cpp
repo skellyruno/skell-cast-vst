@@ -66,6 +66,26 @@ ComPtr<IMMDevice> findVbCable() {
     return {};
 }
 
+// Select Windows' standard default playback device, not its default communications device.
+ComPtr<IMMDevice> findDesktopEndpoint() {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                IID_PPV_ARGS(enumerator.GetAddressOf())))) return {};
+    ComPtr<IMMDevice> output;
+    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, output.GetAddressOf())))
+        return {};
+    return output;
+}
+
+std::wstring endpointId(IMMDevice* device) {
+    if (!device) return {};
+    LPWSTR id = nullptr;
+    if (FAILED(device->GetId(&id)) || !id) return {};
+    std::wstring result(id);
+    CoTaskMemFree(id);
+    return result;
+}
+
 // Format is the FL Studio stream: Windows shared-mode does any necessary SRC/matrixing.
 WAVEFORMATEX floatStereoFormat(std::uint32_t rate) {
     WAVEFORMATEX format {};
@@ -79,7 +99,9 @@ WAVEFORMATEX floatStereoFormat(std::uint32_t rate) {
 }
 } // namespace
 
-DirectCableOutput::DirectCableOutput(std::atomic<float>& sendParam) : send_(sendParam) {}
+DirectCableOutput::DirectCableOutput(std::atomic<float>& sendParam,
+                                     std::atomic<float>& desktopParam)
+    : send_(sendParam), desktop_(desktopParam) {}
 DirectCableOutput::~DirectCableOutput() { stop(); }
 void DirectCableOutput::start(std::uint32_t rate) {
     stop();
@@ -105,17 +127,20 @@ void DirectCableOutput::run() noexcept {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
             continue;
         }
-        // Reconnect automatically after a device disconnection or after VB-CABLE is installed.
-        if (!runCableStream())
+        // Device discovery and switching happen on this worker, never in FL's audio callback.
+        if (!runOutputStream(selectedOutput()))
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         fifo_.clearConsumer();
     }
 }
-bool DirectCableOutput::runCableStream() noexcept {
-    const auto cable = findVbCable();
-    if (cable.Get() == nullptr) return false;
+bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept {
+    const auto endpoint = target == skellcast::OutputTarget::Desktop
+        ? findDesktopEndpoint() : findVbCable();
+    if (!endpoint) return false;
+    const auto activeEndpointId = target == skellcast::OutputTarget::Desktop
+        ? endpointId(endpoint.Get()) : std::wstring {};
     ComPtr<IAudioClient> client;
-    if (FAILED(cable->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+    if (FAILED(endpoint->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
                                reinterpret_cast<void**>(client.GetAddressOf())))) return false;
 
     const auto runningRate = sampleRate_.load(std::memory_order_acquire);
@@ -143,8 +168,21 @@ bool DirectCableOutput::runCableStream() noexcept {
 
     bool healthy = true;
     unsigned timeouts = 0;
+    auto nextDeviceCheck = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     while (!quit_.load(std::memory_order_acquire) && sharing() &&
+           selectedOutput() == target &&
            sampleRate_.load(std::memory_order_acquire) == runningRate) {
+        // Follow a changed Windows default device instead of continuing on old speakers.
+        // This check runs only on the WASAPI worker thread, at most once per second.
+        if (target == skellcast::OutputTarget::Desktop &&
+            std::chrono::steady_clock::now() >= nextDeviceCheck) {
+            const auto selected = findDesktopEndpoint();
+            if (!selected || endpointId(selected.Get()) != activeEndpointId) {
+                healthy = false;
+                break;
+            }
+            nextDeviceCheck = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        }
         const DWORD wait = WaitForSingleObject(event.handle, 100);
         if (wait != WAIT_OBJECT_0) {
             if (wait != WAIT_TIMEOUT || ++timeouts >= 5) { healthy = false; break; }

@@ -1,4 +1,5 @@
 #include "AudioFifo.h"
+#include "OutputRouting.h"
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -13,6 +14,10 @@
 
 int main() {
     using skellcast::AudioFifo;
+    CHECK(skellcast::outputTargetFromParameter(0.0f) == skellcast::OutputTarget::Cable);
+    CHECK(skellcast::outputTargetFromParameter(1.0f) == skellcast::OutputTarget::Desktop);
+    CHECK(skellcast::outputTargetFromParameter(0.49f) == skellcast::OutputTarget::Cable);
+    CHECK(skellcast::outputTargetFromParameter(0.51f) == skellcast::OutputTarget::Desktop);
     CHECK(AudioFifo<>::sanitize(std::numeric_limits<float>::infinity()) == 0.0f);
     CHECK(AudioFifo<>::sanitize(std::numeric_limits<float>::quiet_NaN()) == 0.0f);
     CHECK(AudioFifo<>::sanitize(2.0f) == 1.0f);

@@ -3,10 +3,16 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-// One interactive control: a two-state transmit button with a red/green pilot light.
+// One large transmit button, plus a small destination toggle.
 class SkellCastPowerButton final : public juce::Button {
 public:
     SkellCastPowerButton();
+    void paintButton(juce::Graphics& g, bool highlighted, bool pressed) override;
+};
+
+class SkellCastDestinationSwitch final : public juce::Button {
+public:
+    SkellCastDestinationSwitch();
     void paintButton(juce::Graphics& g, bool highlighted, bool pressed) override;
 };
 
@@ -18,6 +24,8 @@ public:
     void resized() override;
 private:
     SkellCastPowerButton powerButton_;
+    SkellCastDestinationSwitch destinationSwitch_;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sendAttachment_;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> destinationAttachment_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellCastEditor)
 };

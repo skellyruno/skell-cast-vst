@@ -6,13 +6,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout SkellCastProcessor::createPa
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID {"send", 1}, "Share audio", false));
+    // Default stays on VB-CABLE, so existing projects never unexpectedly play to speakers.
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID {"desktop", 1}, "Send to desktop audio", false));
     return {params.begin(), params.end()};
 }
 SkellCastProcessor::SkellCastProcessor()
     : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true)
                                     .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       state(*this, nullptr, "SkellCastParams", createParams()),
-      output_(*state.getRawParameterValue("send")) {}
+      output_(*state.getRawParameterValue("send"),
+              *state.getRawParameterValue("desktop")) {}
 SkellCastProcessor::~SkellCastProcessor() { output_.stop(); }
 void SkellCastProcessor::prepareToPlay(double sampleRate, int) {
     // Windows WASAPI handles sample-rate conversion in shared mode.

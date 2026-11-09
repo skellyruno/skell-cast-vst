@@ -1,27 +1,33 @@
-# SkellCast v0.3 verification checklist
+# SkellCast v0.4 validation checklist
 
-- [x] VST3-only source target. No receiver GUI target, UDP transport, or extra EXE.
-- [x] CMake project enables `LANGUAGES C CXX` to address the reported JUCE error.
-- [ ] Compile VST3 with Windows Visual Studio 2022 / 2026 and JUCE 8.0.17-security.
-- [ ] Run standalone VST3 validator, inspect every plug-in entry point/bus/parameter/state restore.
-- [ ] Verify ON with VB-CABLE routes audio to Discord's **CABLE Output** input; red/OFF stops it.
-- [ ] Verify ON with VB-CABLE absent or unplugged sends **nothing to default speakers**, and reconnect after installation.
-- [ ] Open/close FL Studio UI rapidly and unload plug-in repeatedly. No worker-thread shutdown hangs.
-- [ ] Verify FL Studio Master native output is bitwise unchanged when VST3 is enabled or disabled.
-- [ ] Test mono/stereo bus layouts, 44.1/48/96/192 kHz, 64/128/512/2048 block sizes, FL stop/start.
-- [ ] Test on Windows where VB-CABLE playback device format differs from FL Studio's sample rate.
-- [ ] Test red/OFF after green/ON: no lingering signal beyond a short Windows audio buffer.
-- [ ] Test a 30-minute session, device disconnect/reconnect, host transport seek and pause, heavy CPU load.
-- [ ] Test other Windows capture software (OBS) and confirm no doubled monitor channels.
-- [ ] Check old Receiver installation is unused and no `SkellCastReceiver.exe` is shipped.
-- [ ] Run `ctest --test-dir build -C Release --output-on-failure` on Windows.
+- [x] JUCE CMake project enables C and C++.
+- [x] VST3-only build and packaging workflow has no standalone receiver requirement.
+- [x] Destination parameter defaults to CABLE; routing decision has portable unit coverage.
+- [ ] Windows CI compiles the VST3 and runs core tests.
+- [ ] Confirm ON/OFF: red OFF sends no signal; green ON uses selected destination.
+- [ ] CABLE: VB-CABLE present -> Discord input / OBS Audio Input Capture gets clean stereo.
+- [ ] CABLE: VB-CABLE absent -> no speaker fallback, no crash; reconnect when installed.
+- [ ] DESKTOP: a **different Windows default playback device** receives the extra audio copy.
+- [ ] DESKTOP: OBS Desktop Audio / Audio Output Capture picks it up, not twice.
+- [ ] Warn if FL Studio already plays directly to those same default speakers: double playback is expected.
+- [ ] Toggle CABLE <-> DESKTOP during playback; no stale audio, stuck thread, memory growth or crash.
+- [ ] Flip ON/OFF repeatedly during output routing changes; close/reopen VST editor.
+- [ ] Save/reload project and automation state; existing CABLE projects stay on CABLE by default.
+- [ ] Change Windows default playback device while DESKTOP is ON: reconnect to new device.
+- [ ] Remove/disconnect default playback device and re-enable it; reconnect automatically.
+- [ ] 44.1/48/96/192 kHz; 64/128/512/2048 frame blocks; mono/stereo; pause/seek/stop in FL Studio.
+- [ ] Verify dry FL Studio output is unchanged in CABLE, DESKTOP, and OFF.
+- [ ] Test Windows output device formats different from FL Studio's sample rate.
+- [ ] Test with OBS / Discord voice-processing features toggled as needed for music.
+- [ ] 30 minute stress test; high CPU; DAW close; plugin unload; no leaked workers.
+- [ ] Validate VST3 host compatibility in addition to CMake and FIFO unit tests.
 
-Core FIFO multithreaded tests can run without JUCE on Linux/macOS:
+Portable tests without Windows/JUCE:
 
-```bash
+```sh
 cmake -S . -B build-core -DSKELLCAST_CORE_ONLY=ON
 cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-**Known limitations:** green means **user-enabled**, not device-connected. First active device with standard VB-Audio CABLE Input name is selected automatically. Windows WASAPI shared mode and third-party cable driver determine the final output latency and device format. The Windows integration remains unverified until the above manual tests are done.
+**Note:** CABLE mode sends sound to a virtual input. DESKTOP mode sends a **second copy** to Windows playback, which OBS can capture. It is not a selectable Discord microphone in DESKTOP mode.

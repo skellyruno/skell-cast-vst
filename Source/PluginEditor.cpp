@@ -11,7 +11,7 @@ const juce::Colour secondary {0xff809287};
 
 SkellCastPowerButton::SkellCastPowerButton() : juce::Button("Share audio") {
     setClickingTogglesState(true);
-    setTooltip("Send FL Studio audio directly to VB-CABLE (ON/OFF)");
+    setTooltip("Turn SkellCast audio sharing ON or OFF");
 }
 
 void SkellCastPowerButton::paintButton(juce::Graphics& g, bool highlighted, bool pressed) {
@@ -50,16 +50,45 @@ void SkellCastPowerButton::paintButton(juce::Graphics& g, bool highlighted, bool
                labelWidth, 30, juce::Justification::centredLeft);
 }
 
+SkellCastDestinationSwitch::SkellCastDestinationSwitch() : juce::Button("Output destination") {
+    setClickingTogglesState(true);
+    setTooltip("CABLE: send to VB-CABLE / DESKTOP: send to Windows default playback audio");
+}
+
+void SkellCastDestinationSwitch::paintButton(juce::Graphics& g, bool highlighted, bool pressed) {
+    auto bounds = getLocalBounds().toFloat().reduced(1.5f);
+    const bool desktop = getToggleState();
+    const auto midpoint = bounds.getCentreX();
+    g.setColour(surface.brighter(highlighted ? 0.10f : 0.0f));
+    g.fillRoundedRectangle(bounds, 9.0f);
+    auto selected = desktop ? bounds.withLeft(midpoint) : bounds.withRight(midpoint);
+    selected = selected.reduced(2.5f);
+    g.setColour(green.withAlpha(pressed ? 0.20f : 0.16f));
+    g.fillRoundedRectangle(selected, 7.0f);
+    g.setColour(green.withAlpha(0.65f));
+    g.drawRoundedRectangle(selected, 7.0f, 1.0f);
+    g.setFont(juce::Font(juce::FontOptions(12.0f, juce::Font::bold)));
+    const int half = getWidth() / 2;
+    g.setColour(desktop ? secondary : green);
+    g.drawText("CABLE", 0, 0, half, getHeight(), juce::Justification::centred);
+    g.setColour(desktop ? green : secondary);
+    g.drawText("DESKTOP", half, 0, getWidth() - half, getHeight(), juce::Justification::centred);
+}
+
 SkellCastEditor::SkellCastEditor(SkellCastProcessor& p) : juce::AudioProcessorEditor(&p) {
     addAndMakeVisible(powerButton_);
+    addAndMakeVisible(destinationSwitch_);
     sendAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.state, "send", powerButton_);
+    destinationAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        p.state, "desktop", destinationSwitch_);
     setResizable(false, false);
-    setSize(340, 184);
+    setSize(340, 238);
 }
 
 void SkellCastEditor::resized() {
-    powerButton_.setBounds(24, 83, getWidth() - 48, 77);
+    powerButton_.setBounds(24, 81, getWidth() - 48, 76);
+    destinationSwitch_.setBounds(24, 183, getWidth() - 48, 39);
 }
 
 void SkellCastEditor::paint(juce::Graphics& g) {
@@ -76,5 +105,9 @@ void SkellCastEditor::paint(juce::Graphics& g) {
     g.setColour(secondary);
     g.setFont(juce::Font(juce::FontOptions(11.0f)));
     g.drawText("FL STUDIO  /  STREAM + DISCORD", 26, 56, getWidth() - 52, 16,
+               juce::Justification::centredLeft);
+    g.setColour(secondary);
+    g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
+    g.drawText("SEND TO", 26, 164, getWidth() - 52, 15,
                juce::Justification::centredLeft);
 }
