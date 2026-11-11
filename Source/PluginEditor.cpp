@@ -1,104 +1,128 @@
 #include "PluginEditor.h"
 
 namespace {
-// Deliberately understated SKELLY palette: near-black metal, neon green, one red OFF LED.
-const juce::Colour black        {0xff080b09};
-const juce::Colour panel        {0xff101510};
-const juce::Colour buttonFace   {0xff151c16};
-const juce::Colour border       {0xff27342a};
-const juce::Colour neon         {0xffadff3d};
-const juce::Colour offRed       {0xffff5d62};
-const juce::Colour white        {0xffedf5ee};
-const juce::Colour muted        {0xff89988b};
+// The Bone skin from Skell Key, not SkellCast's older charcoal/neon palette.
+const juce::Colour background {0xff0b0a09};
+const juce::Colour panel      {0xff131210};
+const juce::Colour raised     {0xff1b1915};
+const juce::Colour line       {0xff2f2b23};
+const juce::Colour bone       {0xffe9e1cc};
+const juce::Colour boneDim    {0xff9b937d};
+const juce::Colour accent     {0xffb6f56a};
+const juce::Colour onInk      {0xff0b0c08};
+const juce::Colour offRed     {0xffef6664};
 
-// Original tiny vector skull mark. No textures, images, bitmaps, or extra assets.
-void drawSkellyMark(juce::Graphics& g) {
-    g.setColour(neon.withAlpha(0.92f));
-    g.fillEllipse(22.0f, 22.0f, 25.0f, 23.0f);
-    g.fillRoundedRectangle(27.0f, 38.0f, 15.0f, 10.0f, 3.0f);
-    g.setColour(black);
-    g.fillEllipse(27.0f, 32.0f, 6.0f, 7.0f);
-    g.fillEllipse(37.0f, 32.0f, 6.0f, 7.0f);
+juce::Font labelFont(float size) {
+    return juce::Font(juce::FontOptions(size, juce::Font::bold)).withExtraKerningFactor(0.04f);
+}
+
+// Adapted from Skell Key's skull-bowed key mark (same geometry, scaled).
+void drawSkellKeyMark(juce::Graphics& g, float x, float y) {
+    const juce::Graphics::ScopedSaveState saved(g);
+    g.addTransform(juce::AffineTransform::scale(0.41f, 0.41f)
+                                    .translated(x, y));
+    g.setColour(bone);
+    g.fillEllipse(1.0f, 0.0f, 25.0f, 23.0f);
+    g.fillRoundedRectangle(6.5f, 17.0f, 14.0f, 11.0f, 3.0f);
+    g.fillRoundedRectangle(25.0f, 10.5f, 48.0f, 4.2f, 1.6f);
+    g.fillRoundedRectangle(33.0f, 7.0f, 3.2f, 11.5f, 1.2f);
+    g.fillRect(56.0f, 14.0f, 4.2f, 9.0f);
+    g.fillRect(63.0f, 14.0f, 4.2f, 6.0f);
+    g.fillRect(69.5f, 14.0f, 3.5f, 10.0f);
+    g.setColour(background);
+    g.fillEllipse(6.2f, 8.4f, 6.4f, 6.8f);
+    g.fillEllipse(14.6f, 8.4f, 6.4f, 6.8f);
     juce::Path nose;
-    nose.addTriangle(35.0f, 40.0f, 32.0f, 43.5f, 38.0f, 43.5f);
+    nose.addTriangle(13.5f, 15.0f, 11.6f, 19.0f, 15.4f, 19.0f);
     g.fillPath(nose);
-    g.setColour(black.withAlpha(0.8f));
-    g.drawLine(32.0f, 43.5f, 32.0f, 47.0f, 1.0f);
-    g.drawLine(37.0f, 43.5f, 37.0f, 47.0f, 1.0f);
+    for (int i = 0; i < 3; ++i)
+        g.fillRect(9.6f + 3.4f * static_cast<float>(i), 22.0f, 1.0f, 5.0f);
 }
+
+// Flat square cards and short corner details echo the Skell Key UI.
+void drawBonePanel(juce::Graphics& g, juce::Rectangle<float> r) {
+    g.setColour(panel);
+    g.fillRect(r);
+    g.setColour(line);
+    g.drawRect(r, 1.0f);
+    const float arm = 6.0f;
+    juce::Path corner;
+    corner.startNewSubPath(r.getX(), r.getY() + arm);
+    corner.lineTo(r.getX(), r.getY());
+    corner.lineTo(r.getX() + arm, r.getY());
+    corner.startNewSubPath(r.getRight() - arm, r.getY());
+    corner.lineTo(r.getRight(), r.getY());
+    corner.lineTo(r.getRight(), r.getY() + arm);
+    corner.startNewSubPath(r.getX(), r.getBottom() - arm);
+    corner.lineTo(r.getX(), r.getBottom());
+    corner.lineTo(r.getX() + arm, r.getBottom());
+    corner.startNewSubPath(r.getRight() - arm, r.getBottom());
+    corner.lineTo(r.getRight(), r.getBottom());
+    corner.lineTo(r.getRight(), r.getBottom() - arm);
+    g.setColour(boneDim.withAlpha(0.70f));
+    g.strokePath(corner, juce::PathStrokeType(1.1f));
 }
+} // namespace
 
 SkellCastPowerButton::SkellCastPowerButton() : juce::Button("Share audio") {
     setClickingTogglesState(true);
-    setTooltip("Turn SkellCast audio sharing ON or OFF");
+    setTooltip("Send FL Studio audio to the selected Windows output (ON/OFF)");
 }
 
 void SkellCastPowerButton::paintButton(juce::Graphics& g, bool highlighted, bool pressed) {
-    const bool on = getToggleState();
-    const auto light = on ? neon : offRed;
-    const auto bounds = getLocalBounds().toFloat().reduced(1.0f);
+    const bool active = getToggleState();
+    const auto light = active ? accent : offRed;
+    const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(pressed ? raised.darker(0.14f) : (highlighted ? raised.brighter(0.10f) : raised));
+    g.fillRect(bounds);
+    g.setColour(active ? accent.withAlpha(0.68f) : line);
+    g.drawRect(bounds, 1.0f);
+    if (active) {
+        g.setColour(accent);
+        g.fillRect(bounds.getX(), bounds.getY(), 2.0f, bounds.getHeight());
+    }
 
-    g.setColour(buttonFace.brighter(highlighted ? 0.06f : 0.0f)
-                          .darker(pressed ? 0.08f : 0.0f));
-    g.fillRoundedRectangle(bounds, 11.0f);
-    g.setColour(on ? neon.withAlpha(0.60f) : border);
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 11.0f, 1.2f);
-
-    const auto cx = bounds.getX() + 37.0f;
-    const auto cy = bounds.getCentreY();
-
-    // A soft, inexpensive pilot light: red = disabled, green = selected ON.
-    g.setGradientFill(juce::ColourGradient(light.withAlpha(on ? 0.25f : 0.17f),
-                                           cx, cy, light.withAlpha(0.0f),
-                                           cx + 23.0f, cy + 23.0f, true));
-    g.fillEllipse(cx - 23.0f, cy - 23.0f, 46.0f, 46.0f);
-    g.setColour(light.withAlpha(0.24f));
-    g.fillEllipse(cx - 13.0f, cy - 13.0f, 26.0f, 26.0f);
+    const float cx = bounds.getX() + 28.0f;
+    const float cy = bounds.getCentreY();
+    g.setColour(light.withAlpha(active ? 0.18f : 0.13f));
+    g.fillEllipse(cx - 15.0f, cy - 15.0f, 30.0f, 30.0f);
     g.setColour(light);
     g.fillEllipse(cx - 7.0f, cy - 7.0f, 14.0f, 14.0f);
 
-    const auto labelX = static_cast<int>(bounds.getX() + 72.0f);
-    const auto labelWidth = static_cast<int>(bounds.getWidth() - 83.0f);
-
-    g.setColour(muted);
-    g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
-    g.drawText("AUDIO SHARING", labelX, static_cast<int>(bounds.getY() + 9.0f),
-               labelWidth, 18, juce::Justification::centredLeft);
-
-    g.setColour(on ? neon : offRed);
-    g.setFont(juce::Font(juce::FontOptions(26.0f, juce::Font::bold)));
-    g.drawText(on ? "ON" : "OFF", labelX, static_cast<int>(bounds.getY() + 28.0f),
-               labelWidth, 34, juce::Justification::centredLeft);
+    g.setColour(boneDim);
+    g.setFont(labelFont(9.5f));
+    g.drawText("AUDIO SHARING", 58, 7, getWidth() - 68, 14,
+               juce::Justification::centredLeft);
+    g.setColour(active ? accent : bone);
+    g.setFont(labelFont(24.0f));
+    g.drawText(active ? "ON" : "OFF", 58, 22, getWidth() - 68, 32,
+               juce::Justification::centredLeft);
 }
 
 SkellCastDestinationSwitch::SkellCastDestinationSwitch() : juce::Button("Output destination") {
     setClickingTogglesState(true);
-    setTooltip("CABLE for Discord microphone input / DESKTOP for Windows playback");
+    setTooltip("CABLE: VB-CABLE for Discord; SPARE: auto-detected separate Windows output for OBS");
 }
 
 void SkellCastDestinationSwitch::paintButton(juce::Graphics& g, bool highlighted, bool pressed) {
-    const bool desktop = getToggleState();
-    const auto bounds = getLocalBounds().toFloat().reduced(1.0f);
-    const auto midpoint = bounds.getCentreX();
+    const auto full = getLocalBounds().toFloat().reduced(0.5f);
+    const bool spare = getToggleState();
+    g.setColour(panel);
+    g.fillRect(full);
+    g.setColour(line);
+    g.drawRect(full, 1.0f);
+    const auto middle = full.getCentreX();
+    auto choice = spare ? full.withLeft(middle) : full.withRight(middle);
+    choice = choice.reduced(2.0f);
+    g.setColour(accent.withAlpha(pressed ? 0.85f : (highlighted ? 0.78f : 0.67f)));
+    g.fillRect(choice);
 
-    g.setColour(panel.brighter(highlighted ? 0.06f : 0.0f));
-    g.fillRoundedRectangle(bounds, 9.0f);
-    g.setColour(border);
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 9.0f, 1.0f);
-
-    auto active = desktop ? bounds.withLeft(midpoint) : bounds.withRight(midpoint);
-    active = active.reduced(2.5f);
-    g.setColour(neon.withAlpha(pressed ? 0.10f : 0.16f));
-    g.fillRoundedRectangle(active, 7.0f);
-    g.setColour(neon.withAlpha(0.62f));
-    g.drawRoundedRectangle(active, 7.0f, 1.0f);
-
-    g.setFont(juce::Font(juce::FontOptions(12.0f, juce::Font::bold)));
     const int half = getWidth() / 2;
-    g.setColour(desktop ? muted : neon);
+    g.setFont(labelFont(11.0f));
+    g.setColour(spare ? boneDim : onInk);
     g.drawText("CABLE", 0, 0, half, getHeight(), juce::Justification::centred);
-    g.setColour(desktop ? neon : muted);
-    g.drawText("DESKTOP", half, 0, getWidth() - half, getHeight(),
+    g.setColour(spare ? onInk : boneDim);
+    g.drawText("SPARE", half, 0, getWidth() - half, getHeight(),
                juce::Justification::centred);
 }
 
@@ -111,73 +135,62 @@ SkellCastEditor::SkellCastEditor(SkellCastProcessor& p)
     destinationAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.state, "desktop", destinationSwitch_);
     setResizable(false, false);
-    setSize(320, 249);
-    startTimerHz(5); // 5 Hz UI status, not an audio-thread operation.
+    setSize(272, 212); // 15% smaller than 320 x 249, same fixed aspect impression.
+    startTimerHz(5);
 }
 
 void SkellCastEditor::timerCallback() {
-    repaint(20, 215, getWidth() - 40, 26);
+    repaint(12, 176, getWidth() - 24, 26);
 }
 
 void SkellCastEditor::resized() {
-    powerButton_.setBounds(20, 81, getWidth() - 40, 72);
-    destinationSwitch_.setBounds(20, 176, getWidth() - 40, 34);
+    powerButton_.setBounds(14, 65, getWidth() - 28, 61);
+    destinationSwitch_.setBounds(14, 153, getWidth() - 28, 27);
 }
 
 void SkellCastEditor::paint(juce::Graphics& g) {
-    g.fillAll(black);
+    g.fillAll(background);
+    drawBonePanel(g, getLocalBounds().toFloat().reduced(6.0f));
 
-    auto frame = getLocalBounds().toFloat().reduced(7.0f);
-    g.setColour(panel);
-    g.fillRoundedRectangle(frame, 12.0f);
-    g.setColour(border);
-    g.drawRoundedRectangle(frame, 12.0f, 1.0f);
+    drawSkellKeyMark(g, 14.0f, 17.0f);
+    g.setFont(labelFont(20.0f));
+    g.setColour(bone);
+    g.drawText("SKELL", 51, 15, 72, 27, juce::Justification::centredLeft);
+    g.setColour(accent);
+    g.drawText("CAST", 120, 15, 72, 27, juce::Justification::centredLeft);
 
-    // One restrained SKELLY signature. No distracting decoration or meters.
-    drawSkellyMark(g);
-    g.setColour(white);
-    g.setFont(juce::Font(juce::FontOptions(22.0f, juce::Font::bold)));
-    g.drawText("SKELLCAST", 55, 18, getWidth() - 76, 33,
+    g.setFont(labelFont(9.0f));
+    g.setColour(boneDim);
+    g.drawText("STREAM  /  SHARE", 52, 42, getWidth() - 67, 13,
                juce::Justification::centredLeft);
 
-    g.setColour(neon.withAlpha(0.86f));
-    g.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::bold)));
-    g.drawText("STREAM  /  SHARE", 56, 49, getWidth() - 80, 18,
-               juce::Justification::centredLeft);
+    g.setColour(boneDim);
+    g.setFont(labelFont(9.0f));
+    g.drawText("OUTPUT", 15, 134, getWidth() - 30, 15, juce::Justification::centredLeft);
 
-    g.setColour(muted);
-    g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
-    g.drawText("OUTPUT", 22, 159, getWidth() - 44, 14,
-               juce::Justification::centredLeft);
-
-    // Show the actual Windows endpoint picked by the routing worker.
     const auto status = processor_.outputDeviceStatus();
-    const bool enabled = powerButton_.getToggleState();
-    juce::String statusLine = "AUTO DETECT";
-    juce::Colour statusColour = muted;
-    if (enabled) {
+    juce::String label("AUTO DETECT");
+    juce::Colour colour = boneDim;
+    if (powerButton_.getToggleState()) {
         switch (status.state) {
             case DirectCableOutput::DeviceState::Connected:
-                statusLine = "AUTO: " + juce::String(status.name.c_str());
-                statusColour = neon;
+                label = "AUTO: " + juce::String(status.name.c_str());
+                colour = accent;
                 break;
             case DirectCableOutput::DeviceState::NotFound:
-                statusLine = juce::String(status.name.c_str());
-                statusColour = offRed;
-                break;
             case DirectCableOutput::DeviceState::Error:
-                statusLine = juce::String(status.name.c_str());
-                statusColour = offRed;
+                label = juce::String(status.name.c_str());
+                colour = offRed;
                 break;
-            case DirectCableOutput::DeviceState::Searching:
             case DirectCableOutput::DeviceState::Off:
-                statusLine = "AUTO: DETECTING";
+            case DirectCableOutput::DeviceState::Searching:
+                label = "AUTO: DETECTING";
                 break;
         }
     }
-    g.setColour(statusColour);
-    g.fillEllipse(23.0f, 223.0f, 6.0f, 6.0f);
-    g.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::bold)));
-    g.drawFittedText(statusLine, 34, 218, getWidth() - 56, 17,
-                     juce::Justification::centredLeft, 1, 0.7f);
+    g.setColour(colour);
+    g.fillEllipse(16.0f, 191.0f, 5.0f, 5.0f);
+    g.setFont(labelFont(9.0f));
+    g.drawFittedText(label, 28, 185, getWidth() - 43, 17,
+                     juce::Justification::centredLeft, 1, 0.65f);
 }

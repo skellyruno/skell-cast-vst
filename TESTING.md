@@ -26,3 +26,16 @@ cmake -S . -B build-core -DSKELLCAST_CORE_ONLY=ON
 cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
+
+## v0.6 UI and global preference regression checks
+
+- [ ] Verify Skell Key Bone colors and skull-key logo on actual Windows VST3 render, including ivory SKELL / green CAST.
+- [ ] Verify 272x212 layout: no clipped text, click targets remain usable.
+- [ ] Send ON in Project A, open Project B (new instance): it is ON without touching Project B.
+- [ ] Send OFF in Project B, open Project C: it is OFF without touching Project C.
+- [ ] Load previously saved Project A while global preference is OFF: old per-project ON must not turn sharing back on.
+- [ ] Switch CABLE/SPARE and reopen FL Studio: last chosen destination is preserved.
+- [ ] Confirm unrelated VST3 automation still uses existing parameter ID `desktop`.
+- [ ] Close and reopen plugin UI without closing project: current state stays consistent.
+- [ ] Run with several SkellCast instances in one process: same global UI state; no disk I/O in audio callback.
+- [ ] Ensure no audible difference to pass-through audio, latency or WASAPI routing after UI/preferences update.

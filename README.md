@@ -51,3 +51,15 @@ Or go to **GitHub Actions > Windows VST3 Only** to download the **SkellCast-VST3
 - Selection is fail-closed when the Windows default device roles or session activity cannot be checked.
 - Automatic preference is virtual spare endpoint over physical spare endpoint. In-use Windows audio sessions disqualify endpoints; idle here means the API reported no active shared-mode session when scanned.
 - The ON/OFF and output choice are saved in the project. The AUTO status is live and is not a third control.
+
+
+## v0.6 — Skell Key Bone styling and global user preferences
+
+- UI now uses Skell Key's **Bone** palette: near-black, ivory lettering, bone-style square cards, and green accents. `SKELL` is ivory and `CAST` is green.
+- Compact 272 x 212 window (15% smaller in both directions from the previous 320 x 249 window).
+- Output switch reads **CABLE / SPARE**. `SPARE` is the previous `DESKTOP` routing mode — it selects a separate idle, non-default Windows playback device, not the default speakers. The parameter ID stays `desktop` for existing FL Studio automation compatibility.
+- Both the sharing toggle and output destination persist **globally per Windows user**, including across independent FL Studio projects and restarts. The last saved setting wins over historical per-project snapshots when they are loaded.
+- Preferences use JUCE's per-user `PropertiesFile` under the Skelly / SkellCast app configuration location, not a companion application.
+- Open SkellCast instances in the same FL Studio process synchronise their settings when the host's message loop is running (4 updates/sec). Changes made while the editor is closed are also captured through the parameter listener.
+- **Important:** with global ON, adding SkellCast to a new Master mixer can begin sharing as soon as the host runs audio. Turn OFF when private audio should not be shared. Also avoid two projects/instances playing into the same destination simultaneously.
+- The previous WASAPI output device selection and audio processing implementation are unchanged.

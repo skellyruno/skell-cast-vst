@@ -1,11 +1,16 @@
 #pragma once
 #include <JuceHeader.h>
+#include <atomic>
 #include "DirectCableOutput.h"
 
-class SkellCastProcessor final : public juce::AudioProcessor {
+class SkellCastProcessor final : public juce::AudioProcessor,
+                                  private juce::AudioProcessorValueTreeState::Listener,
+                                  private juce::AsyncUpdater,
+                                  private juce::Timer {
 public:
     SkellCastProcessor();
     ~SkellCastProcessor() override;
+
     void prepareToPlay(double sampleRate, int maxBlockSize) override;
     void releaseResources() override;
     bool isBusesLayoutSupported(const BusesLayout& layouts) const override;
@@ -30,6 +35,12 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();
+    void parameterChanged(const juce::String& id, float value) override;
+    void handleAsyncUpdate() override;
+    void timerCallback() override;
+    void applyGlobalSettings();
+
+    std::atomic<bool> applyingGlobal_ {false};
     DirectCableOutput output_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SkellCastProcessor)
 };

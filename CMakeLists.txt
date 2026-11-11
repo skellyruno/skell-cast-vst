@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 # JUCE requires both languages even when the plugin code itself is C++.
-project(SkellCast VERSION 0.5.0 LANGUAGES C CXX)
+project(SkellCast VERSION 0.6.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CTest)
@@ -47,7 +47,7 @@ target_sources(SkellCast PRIVATE
     Source/PluginProcessor.cpp Source/PluginProcessor.h
     Source/PluginEditor.cpp Source/PluginEditor.h
     Source/DirectCableOutput.cpp Source/DirectCableOutput.h
-    Source/AudioFifo.h Source/OutputRouting.h Source/OutputSelection.h)
+    Source/AudioFifo.h Source/OutputRouting.h Source/OutputSelection.h Source/GlobalSettings.h)
 target_compile_definitions(SkellCast PRIVATE
     JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(SkellCast PRIVATE
