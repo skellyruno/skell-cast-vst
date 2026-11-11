@@ -39,3 +39,17 @@ ctest --test-dir build-core --output-on-failure
 - [ ] Close and reopen plugin UI without closing project: current state stays consistent.
 - [ ] Run with several SkellCast instances in one process: same global UI state; no disk I/O in audio callback.
 - [ ] Ensure no audible difference to pass-through audio, latency or WASAPI routing after UI/preferences update.
+
+## v0.7 final release checklist
+
+- [x] Maintains the existing CABLE/SPARE DSP and WASAPI implementation unchanged.
+- [x] Preserves VST3 ID and parameters `send` / `desktop` for older projects.
+- [x] CPU throughput non-gating FIFO smoke test added.
+- [ ] GitHub Actions Windows Release + CTest must succeed on this exact commit.
+- [ ] Render and inspect UI in FL Studio at 100% and high DPI: skull (no key), joined `Skelcast` title, white labels, black background and green accents.
+- [ ] OBS record 1–2 minutes with CABLE mode: verify captured signal is normal volume, free of clipping/drops and plays back after the recording is saved.
+- [ ] Repeat with SPARE output on a machine with a genuinely separate idle device; OBS must capture the shown endpoint.
+- [ ] Verify existing FL Studio projects and global preference across FL Studio restarts, with ON then OFF.
+- [ ] Compare FL Studio Master rendered output with Skelcast enabled vs disabled; it must remain unchanged.
+- [ ] During a longer session, monitor CPU in FL Studio and Windows Task Manager; watch for dropouts, underruns and stuck shutdown.
+- [ ] Confirm multiple windows/instances don't share the same audio route unintentionally.

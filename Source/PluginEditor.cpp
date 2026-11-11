@@ -1,34 +1,31 @@
 #include "PluginEditor.h"
 
 namespace {
-// The Bone skin from Skell Key, not SkellCast's older charcoal/neon palette.
-const juce::Colour background {0xff0b0a09};
-const juce::Colour panel      {0xff131210};
-const juce::Colour raised     {0xff1b1915};
-const juce::Colour line       {0xff2f2b23};
-const juce::Colour bone       {0xffe9e1cc};
-const juce::Colour boneDim    {0xff9b937d};
-const juce::Colour accent     {0xffb6f56a};
-const juce::Colour onInk      {0xff0b0c08};
-const juce::Colour offRed     {0xffef6664};
+// Final Skelcast skin: midnight black, white labels, signature neon green.
+const juce::Colour background {0xff050607};
+const juce::Colour panel      {0xff090c0a};
+const juce::Colour raised     {0xff101612};
+const juce::Colour line       {0xff223127};
+const juce::Colour bone       {0xfff6fff8}; // white, not ivory
+const juce::Colour boneDim    {0xffc1cbc3}; // white at lower emphasis
+const juce::Colour accent     {0xff39ff14}; // Skell Key signature neon
+const juce::Colour onInk      {0xff050807};
+const juce::Colour offRed     {0xffff5c61};
 
 juce::Font labelFont(float size) {
-    return juce::Font(juce::FontOptions(size, juce::Font::bold)).withExtraKerningFactor(0.04f);
+    return juce::Font(juce::FontOptions(size, juce::Font::bold));
 }
 
-// Adapted from Skell Key's skull-bowed key mark (same geometry, scaled).
-void drawSkellKeyMark(juce::Graphics& g, float x, float y) {
+// Skull silhouette taken from the skull portion of Skell Key's mark.
+// No key shaft, teeth or extra header decoration. Vector drawn at any DPI.
+void drawSkullMark(juce::Graphics& g, float x, float y) {
     const juce::Graphics::ScopedSaveState saved(g);
-    g.addTransform(juce::AffineTransform::scale(0.41f, 0.41f)
-                                    .translated(x, y));
+    g.addTransform(juce::AffineTransform::scale(0.92f, 0.92f).translated(x, y));
+
     g.setColour(bone);
     g.fillEllipse(1.0f, 0.0f, 25.0f, 23.0f);
     g.fillRoundedRectangle(6.5f, 17.0f, 14.0f, 11.0f, 3.0f);
-    g.fillRoundedRectangle(25.0f, 10.5f, 48.0f, 4.2f, 1.6f);
-    g.fillRoundedRectangle(33.0f, 7.0f, 3.2f, 11.5f, 1.2f);
-    g.fillRect(56.0f, 14.0f, 4.2f, 9.0f);
-    g.fillRect(63.0f, 14.0f, 4.2f, 6.0f);
-    g.fillRect(69.5f, 14.0f, 3.5f, 10.0f);
+
     g.setColour(background);
     g.fillEllipse(6.2f, 8.4f, 6.4f, 6.8f);
     g.fillEllipse(14.6f, 8.4f, 6.4f, 6.8f);
@@ -78,14 +75,19 @@ void SkellCastPowerButton::paintButton(juce::Graphics& g, bool highlighted, bool
     g.setColour(active ? accent.withAlpha(0.68f) : line);
     g.drawRect(bounds, 1.0f);
     if (active) {
+        // A single quiet accent line, not a bright illuminated frame.
         g.setColour(accent);
         g.fillRect(bounds.getX(), bounds.getY(), 2.0f, bounds.getHeight());
+        g.setColour(accent.withAlpha(0.13f));
+        g.drawRect(bounds.expanded(1.0f), 1.0f);
     }
 
     const float cx = bounds.getX() + 28.0f;
     const float cy = bounds.getCentreY();
-    g.setColour(light.withAlpha(active ? 0.18f : 0.13f));
-    g.fillEllipse(cx - 15.0f, cy - 15.0f, 30.0f, 30.0f);
+    g.setGradientFill(juce::ColourGradient(
+        light.withAlpha(active ? 0.24f : 0.13f), cx, cy,
+        light.withAlpha(0.0f), cx + 18.0f, cy + 18.0f, true));
+    g.fillEllipse(cx - 18.0f, cy - 18.0f, 36.0f, 36.0f);
     g.setColour(light);
     g.fillEllipse(cx - 7.0f, cy - 7.0f, 14.0f, 14.0f);
 
@@ -135,7 +137,7 @@ SkellCastEditor::SkellCastEditor(SkellCastProcessor& p)
     destinationAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.state, "desktop", destinationSwitch_);
     setResizable(false, false);
-    setSize(272, 212); // 15% smaller than 320 x 249, same fixed aspect impression.
+    setSize(272, 212); // Keep the tested compact dimensions.
     startTimerHz(5);
 }
 
@@ -152,16 +154,30 @@ void SkellCastEditor::paint(juce::Graphics& g) {
     g.fillAll(background);
     drawBonePanel(g, getLocalBounds().toFloat().reduced(6.0f));
 
-    drawSkellKeyMark(g, 14.0f, 17.0f);
-    g.setFont(labelFont(20.0f));
+    drawSkullMark(g, 16.0f, 16.0f);
+
+    // Proportional glyph measurement makes Skelcast ONE tight word,
+    // not two fixed text boxes separated by a large artificial gap.
+    const auto font = labelFont(21.0f);
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText(font, "Skel", 0.0f, 0.0f);
+    const float firstWidth = glyphs.getBoundingBox(0, -1, true).getWidth();
+    constexpr float titleX = 48.0f, titleY = 15.0f, titleH = 29.0f;
+    const float castX = titleX + firstWidth + 0.5f;
+    g.setFont(font);
     g.setColour(bone);
-    g.drawText("SKELL", 51, 15, 72, 27, juce::Justification::centredLeft);
+    g.drawText("Skel", juce::Rectangle<float>(titleX, titleY, firstWidth + 2.0f, titleH),
+               juce::Justification::centredLeft, false);
+    auto castArea = juce::Rectangle<float>(castX, titleY, 70.0f, titleH);
+    g.setColour(accent.withAlpha(0.14f));
+    g.drawText("cast", castArea.expanded(0.7f, 0.0f),
+               juce::Justification::centredLeft, false);
     g.setColour(accent);
-    g.drawText("CAST", 120, 15, 72, 27, juce::Justification::centredLeft);
+    g.drawText("cast", castArea, juce::Justification::centredLeft, false);
 
     g.setFont(labelFont(9.0f));
     g.setColour(boneDim);
-    g.drawText("STREAM  /  SHARE", 52, 42, getWidth() - 67, 13,
+    g.drawText("STREAM / SHARE", 48, 43, getWidth() - 64, 13,
                juce::Justification::centredLeft);
 
     g.setColour(boneDim);

@@ -2,6 +2,8 @@
 #include "OutputRouting.h"
 #include "OutputSelection.h"
 #include <atomic>
+#include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -83,5 +85,29 @@ int main() {
     consumer.join();
     CHECK(good.load());
     CHECK(concurrent.available() == 0);
+
+    // Non-gating throughput smoke measurement for the actual stereo FIFO copy.
+    // This is not a CPU-% guarantee; the real cost depends on the host/device.
+    AudioFifo<16384> throughput;
+    std::array<float, 128> blockLeft {};
+    std::array<float, 128> blockRight {};
+    std::array<float, 256> decoded {};
+    for (std::size_t i = 0; i < blockLeft.size(); ++i) {
+        blockLeft[i] = static_cast<float>(i) / 256.0f;
+        blockRight[i] = -blockLeft[i];
+    }
+    const auto began = std::chrono::steady_clock::now();
+    constexpr int blocks = 4096;
+    for (int k = 0; k < blocks; ++k) {
+        CHECK(throughput.push(blockLeft.data(), blockRight.data(), blockLeft.size())
+              == blockLeft.size());
+        CHECK(throughput.popInterleaved(decoded.data(), blockLeft.size()) == blockLeft.size());
+        CHECK(std::abs(decoded[0] - blockLeft[0]) < 0.00001f);
+        CHECK(std::abs(decoded[2 * 127 + 1] - blockRight[127]) < 0.00001f);
+    }
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - began).count();
+    std::cout << "Stereo FIFO smoke: " << blocks * blockLeft.size()
+              << " frames in " << elapsed << " ms (non-gating)\n";
     std::cout << "SkellCast FIFO wrap, overflow, sanitization, and two-thread stress passed\n";
 }
