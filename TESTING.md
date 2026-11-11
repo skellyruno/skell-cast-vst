@@ -1,33 +1,28 @@
-# SkellCast v0.4 validation checklist
+# SkellCast v0.5 test plan
 
-- [x] JUCE CMake project enables C and C++.
-- [x] VST3-only build and packaging workflow has no standalone receiver requirement.
-- [x] Destination parameter defaults to CABLE; routing decision has portable unit coverage.
-- [ ] Windows CI compiles the VST3 and runs core tests.
-- [ ] Confirm ON/OFF: red OFF sends no signal; green ON uses selected destination.
-- [ ] CABLE: VB-CABLE present -> Discord input / OBS Audio Input Capture gets clean stereo.
-- [ ] CABLE: VB-CABLE absent -> no speaker fallback, no crash; reconnect when installed.
-- [ ] DESKTOP: a **different Windows default playback device** receives the extra audio copy.
-- [ ] DESKTOP: OBS Desktop Audio / Audio Output Capture picks it up, not twice.
-- [ ] Warn if FL Studio already plays directly to those same default speakers: double playback is expected.
-- [ ] Toggle CABLE <-> DESKTOP during playback; no stale audio, stuck thread, memory growth or crash.
-- [ ] Flip ON/OFF repeatedly during output routing changes; close/reopen VST editor.
-- [ ] Save/reload project and automation state; existing CABLE projects stay on CABLE by default.
-- [ ] Change Windows default playback device while DESKTOP is ON: reconnect to new device.
-- [ ] Remove/disconnect default playback device and re-enable it; reconnect automatically.
-- [ ] 44.1/48/96/192 kHz; 64/128/512/2048 frame blocks; mono/stereo; pause/seek/stop in FL Studio.
-- [ ] Verify dry FL Studio output is unchanged in CABLE, DESKTOP, and OFF.
-- [ ] Test Windows output device formats different from FL Studio's sample rate.
-- [ ] Test with OBS / Discord voice-processing features toggled as needed for music.
-- [ ] 30 minute stress test; high CPU; DAW close; plugin unload; no leaked workers.
-- [ ] Validate VST3 host compatibility in addition to CMake and FIFO unit tests.
+## Automated tests
+- [x] Pure routing selector tests added: default output exclusion, active endpoint rejection, inspection failure, no-spare case and virtual preference.
+- [ ] Windows GitHub Actions VST3 build + CTest success (check latest run).
+- [ ] Manual Windows/WASAPI integration and FL Studio / OBS tests.
 
-Portable tests without Windows/JUCE:
+## Windows / FL Studio / OBS checks
+- [ ] **One Windows speaker/headphone only**: DESKTOP reports No spare output device and makes no duplicate sound.
+- [ ] Two Windows playback devices: DESKTOP chooses an idle *non-default* device and displays its name.
+- [ ] Busy non-default device: excludes endpoint if Windows lists an active shared-mode audio session.
+- [ ] Multiple eligible endpoints: prioritizes idle virtual output; otherwise picks first idle physical.
+- [ ] OBS Audio Output Capture can capture the **shown** non-default endpoint, not the default output.
+- [ ] Change Windows default device while sharing: formerly spare default is disconnected, then a new spare is scanned.
+- [ ] Disconnect/reconnect selected hardware endpoint, retry after it becomes available.
+- [ ] ASIO/exclusive-host caveat: verify spare endpoint is not actually an alternate route to same hardware; session manager alone cannot detect this.
+- [ ] CABLE mode: VB-CABLE present/absent, Discord input test, ON/OFF behavior.
+- [ ] UI auto status updates, no clipping of label, button/switch works, project state persists.
+- [ ] Stress: repeated toggles, 44.1/48/96 kHz, 64-2048 frame blocks, no host dropouts; validate no feedback.
+- [ ] Confirm output remains bit-identical through FL Master and app closes without leaked threads.
+
+## Portable core tests
 
 ```sh
 cmake -S . -B build-core -DSKELLCAST_CORE_ONLY=ON
 cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
-
-**Note:** CABLE mode sends sound to a virtual input. DESKTOP mode sends a **second copy** to Windows playback, which OBS can capture. It is not a selectable Discord microphone in DESKTOP mode.

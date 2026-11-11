@@ -1,5 +1,6 @@
 #include "AudioFifo.h"
 #include "OutputRouting.h"
+#include "OutputSelection.h"
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
@@ -14,6 +15,27 @@
 
 int main() {
     using skellcast::AudioFifo;
+    using skellcast::OutputCandidate;
+    // A single/default output must never be used as a second audio copy.
+    constexpr OutputCandidate onlyDefault[] = {{true, false, false, true}};
+    CHECK(skellcast::selectSpareOutput(onlyDefault, 1) == -1);
+    CHECK(skellcast::selectSpareOutput(nullptr, 0) == -1);
+    constexpr OutputCandidate activeOnly[] = {{false, true, false, true}};
+    CHECK(skellcast::selectSpareOutput(activeOnly, 1) == -1);
+    constexpr OutputCandidate unknownOnly[] = {{false, false, true, false}};
+    CHECK(skellcast::selectSpareOutput(unknownOnly, 1) == -1);
+    constexpr OutputCandidate withSpare[] = {
+        {true, false, false, true}, // default speaker, forbidden
+        {false, true, true, true}, // virtual endpoint already in use, forbidden
+        {false, false, false, true}, // spare headphones, eligible
+        {false, false, true, true}  // spare virtual cable, prefer this for OBS
+    };
+    CHECK(skellcast::selectSpareOutput(withSpare, 4) == 3);
+    constexpr OutputCandidate physicalOnly[] = {
+        {true, false, false, true},
+        {false, false, false, true}
+    };
+    CHECK(skellcast::selectSpareOutput(physicalOnly, 2) == 1);
     CHECK(skellcast::outputTargetFromParameter(0.0f) == skellcast::OutputTarget::Cable);
     CHECK(skellcast::outputTargetFromParameter(1.0f) == skellcast::OutputTarget::Desktop);
     CHECK(skellcast::outputTargetFromParameter(0.49f) == skellcast::OutputTarget::Cable);

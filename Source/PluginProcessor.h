@@ -26,6 +26,7 @@ public:
     void setStateInformation(const void*, int) override;
 
     juce::AudioProcessorValueTreeState state;
+    DirectCableOutput::DeviceStatus outputDeviceStatus() const { return output_.deviceStatus(); }
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();

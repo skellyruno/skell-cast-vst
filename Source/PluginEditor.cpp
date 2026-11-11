@@ -102,7 +102,8 @@ void SkellCastDestinationSwitch::paintButton(juce::Graphics& g, bool highlighted
                juce::Justification::centred);
 }
 
-SkellCastEditor::SkellCastEditor(SkellCastProcessor& p) : juce::AudioProcessorEditor(&p) {
+SkellCastEditor::SkellCastEditor(SkellCastProcessor& p)
+    : juce::AudioProcessorEditor(&p), processor_(p) {
     addAndMakeVisible(powerButton_);
     addAndMakeVisible(destinationSwitch_);
     sendAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
@@ -110,12 +111,17 @@ SkellCastEditor::SkellCastEditor(SkellCastProcessor& p) : juce::AudioProcessorEd
     destinationAttachment_ = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         p.state, "desktop", destinationSwitch_);
     setResizable(false, false);
-    setSize(320, 232);
+    setSize(320, 249);
+    startTimerHz(5); // 5 Hz UI status, not an audio-thread operation.
+}
+
+void SkellCastEditor::timerCallback() {
+    repaint(20, 215, getWidth() - 40, 26);
 }
 
 void SkellCastEditor::resized() {
-    powerButton_.setBounds(20, 82, getWidth() - 40, 74);
-    destinationSwitch_.setBounds(20, 185, getWidth() - 40, 30);
+    powerButton_.setBounds(20, 81, getWidth() - 40, 72);
+    destinationSwitch_.setBounds(20, 176, getWidth() - 40, 34);
 }
 
 void SkellCastEditor::paint(juce::Graphics& g) {
@@ -141,6 +147,37 @@ void SkellCastEditor::paint(juce::Graphics& g) {
 
     g.setColour(muted);
     g.setFont(juce::Font(juce::FontOptions(10.5f, juce::Font::bold)));
-    g.drawText("OUTPUT", 22, 165, getWidth() - 44, 16,
+    g.drawText("OUTPUT", 22, 159, getWidth() - 44, 14,
                juce::Justification::centredLeft);
+
+    // Show the actual Windows endpoint picked by the routing worker.
+    const auto status = processor_.outputDeviceStatus();
+    const bool enabled = powerButton_.getToggleState();
+    juce::String statusLine = "AUTO DETECT";
+    juce::Colour statusColour = muted;
+    if (enabled) {
+        switch (status.state) {
+            case DirectCableOutput::DeviceState::Connected:
+                statusLine = "AUTO: " + juce::String(status.name.c_str());
+                statusColour = neon;
+                break;
+            case DirectCableOutput::DeviceState::NotFound:
+                statusLine = juce::String(status.name.c_str());
+                statusColour = offRed;
+                break;
+            case DirectCableOutput::DeviceState::Error:
+                statusLine = juce::String(status.name.c_str());
+                statusColour = offRed;
+                break;
+            case DirectCableOutput::DeviceState::Searching:
+            case DirectCableOutput::DeviceState::Off:
+                statusLine = "AUTO: DETECTING";
+                break;
+        }
+    }
+    g.setColour(statusColour);
+    g.fillEllipse(23.0f, 223.0f, 6.0f, 6.0f);
+    g.setFont(juce::Font(juce::FontOptions(10.0f, juce::Font::bold)));
+    g.drawFittedText(statusLine, 34, 218, getWidth() - 56, 17,
+                     juce::Justification::centredLeft, 1, 0.7f);
 }

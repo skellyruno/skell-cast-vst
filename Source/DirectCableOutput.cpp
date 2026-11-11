@@ -1,11 +1,14 @@
 #include "DirectCableOutput.h"
+#include "OutputSelection.h"
 #include <algorithm>
 #include <chrono>
 #include <cwctype>
+#include <set>
 #include <string>
+#include <vector>
 
 #if !defined(_WIN32)
-#error SkellCast direct Windows cable output is Windows-only.
+#error SkellCast direct Windows audio output is Windows-only.
 #endif
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -15,6 +18,7 @@
 #include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <audiopolicy.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <propidl.h>
 #include <propsys.h>
@@ -31,50 +35,17 @@ struct EventHandle {
     HANDLE handle = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     ~EventHandle() { if (handle) CloseHandle(handle); }
 };
+struct ChosenDevice {
+    ComPtr<IMMDevice> device;
+    std::wstring name;
+    std::wstring id;
+};
 
-bool isCableEndpoint(const wchar_t* name) {
-    if (!name) return false;
-    std::wstring label(name);
-    std::transform(label.begin(), label.end(), label.begin(),
-                   [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-    // Never guess a speaker/headphone endpoint. Only render into VB-CABLE's input.
-    return label.find(L"cable input") != std::wstring::npos &&
-           (label.find(L"vb-audio") != std::wstring::npos ||
-            label.find(L"virtual cable") != std::wstring::npos);
-}
-
-ComPtr<IMMDevice> findVbCable() {
+ComPtr<IMMDeviceEnumerator> makeEnumerator() {
     ComPtr<IMMDeviceEnumerator> enumerator;
     if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                                 IID_PPV_ARGS(enumerator.GetAddressOf())))) return {};
-    ComPtr<IMMDeviceCollection> list;
-    if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, list.GetAddressOf()))) return {};
-    UINT count = 0;
-    if (FAILED(list->GetCount(&count))) return {};
-    for (UINT i = 0; i < count; ++i) {
-        ComPtr<IMMDevice> device;
-        if (FAILED(list->Item(i, device.GetAddressOf()))) continue;
-        ComPtr<IPropertyStore> properties;
-        if (FAILED(device->OpenPropertyStore(STGM_READ, properties.GetAddressOf()))) continue;
-        PROPVARIANT name;
-        PropVariantInit(&name);
-        const HRESULT status = properties->GetValue(PKEY_Device_FriendlyName, &name);
-        const bool match = SUCCEEDED(status) && name.vt == VT_LPWSTR && isCableEndpoint(name.pwszVal);
-        PropVariantClear(&name);
-        if (match) return device;
-    }
-    return {};
-}
-
-// Select Windows' standard default playback device, not its default communications device.
-ComPtr<IMMDevice> findDesktopEndpoint() {
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(enumerator.GetAddressOf())))) return {};
-    ComPtr<IMMDevice> output;
-    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, output.GetAddressOf())))
-        return {};
-    return output;
+    return enumerator;
 }
 
 std::wstring endpointId(IMMDevice* device) {
@@ -86,7 +57,133 @@ std::wstring endpointId(IMMDevice* device) {
     return result;
 }
 
-// Format is the FL Studio stream: Windows shared-mode does any necessary SRC/matrixing.
+std::wstring deviceName(IMMDevice* device) {
+    if (!device) return {};
+    ComPtr<IPropertyStore> properties;
+    if (FAILED(device->OpenPropertyStore(STGM_READ, properties.GetAddressOf())))
+        return {};
+    PROPVARIANT prop;
+    PropVariantInit(&prop);
+    const HRESULT result = properties->GetValue(PKEY_Device_FriendlyName, &prop);
+    std::wstring name;
+    if (SUCCEEDED(result) && prop.vt == VT_LPWSTR && prop.pwszVal)
+        name = prop.pwszVal;
+    PropVariantClear(&prop);
+    return name;
+}
+
+std::wstring lowercase(std::wstring label) {
+    std::transform(label.begin(), label.end(), label.begin(),
+                   [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+    return label;
+}
+
+bool isCableEndpoint(const std::wstring& name) {
+    const auto label = lowercase(name);
+    return label.find(L"cable input") != std::wstring::npos &&
+           (label.find(L"vb-audio") != std::wstring::npos ||
+            label.find(L"virtual cable") != std::wstring::npos);
+}
+
+bool looksVirtual(const std::wstring& name) {
+    const auto label = lowercase(name);
+    return label.find(L"virtual") != std::wstring::npos ||
+           label.find(L"cable") != std::wstring::npos ||
+           label.find(L"voicemeeter") != std::wstring::npos ||
+           label.find(L"loopback") != std::wstring::npos;
+}
+
+ChosenDevice findVbCable() {
+    const auto enumerator = makeEnumerator();
+    if (enumerator.Get() == nullptr) return {};
+    ComPtr<IMMDeviceCollection> list;
+    if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, list.GetAddressOf())))
+        return {};
+    UINT count = 0;
+    if (FAILED(list->GetCount(&count))) return {};
+    for (UINT i = 0; i < count; ++i) {
+        ComPtr<IMMDevice> device;
+        if (FAILED(list->Item(i, device.GetAddressOf()))) continue;
+        const auto name = deviceName(device.Get());
+        if (isCableEndpoint(name))
+            return { device, name, endpointId(device.Get()) };
+    }
+    return {};
+}
+
+// Audio session enumeration is a best-effort signal, not definitive for ASIO,
+// exclusive-mode apps or sessions created concurrently. Fail CLOSED if it fails.
+bool isEndpointKnownIdle(IMMDevice* endpoint) {
+    ComPtr<IAudioSessionManager2> manager;
+    if (FAILED(endpoint->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
+                                   reinterpret_cast<void**>(manager.GetAddressOf()))))
+        return false;
+    ComPtr<IAudioSessionEnumerator> sessions;
+    if (FAILED(manager->GetSessionEnumerator(sessions.GetAddressOf()))) return false;
+    int count = 0;
+    if (FAILED(sessions->GetCount(&count))) return false;
+    for (int i = 0; i < count; ++i) {
+        ComPtr<IAudioSessionControl> control;
+        if (FAILED(sessions->GetSession(i, control.GetAddressOf()))) return false;
+        AudioSessionState state = AudioSessionStateInactive;
+        if (FAILED(control->GetState(&state))) return false;
+        if (state == AudioSessionStateActive) return false;
+    }
+    return true;
+}
+
+// The default output (including multimedia and communications roles) is never
+// eligible. A system with just one output will report NO SPARE OUTPUT rather
+// than doubling the music on its speakers.
+ChosenDevice findSpareDesktopDevice() {
+    const auto enumerator = makeEnumerator();
+    if (enumerator.Get() == nullptr) return {};
+
+    std::set<std::wstring> excluded;
+    const ERole roles[] = { eConsole, eMultimedia, eCommunications };
+    for (const auto role : roles) {
+        ComPtr<IMMDevice> current;
+        const HRESULT result = enumerator->GetDefaultAudioEndpoint(
+            eRender, role, current.GetAddressOf());
+        if (SUCCEEDED(result)) {
+            const auto id = endpointId(current.Get());
+            if (id.empty()) return {};
+            excluded.insert(id);
+        } else if (result != E_NOTFOUND) {
+            return {};
+        }
+    }
+    if (excluded.empty()) return {}; // Unknown defaults: don't guess.
+
+    ComPtr<IMMDeviceCollection> list;
+    if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, list.GetAddressOf())))
+        return {};
+    UINT count = 0;
+    if (FAILED(list->GetCount(&count))) return {};
+
+    std::vector<ChosenDevice> found;
+    std::vector<skellcast::OutputCandidate> candidates;
+    found.reserve(count);
+    candidates.reserve(count);
+    for (UINT i = 0; i < count; ++i) {
+        ComPtr<IMMDevice> device;
+        if (FAILED(list->Item(i, device.GetAddressOf()))) continue;
+        const auto id = endpointId(device.Get());
+        const auto name = deviceName(device.Get());
+        if (id.empty() || name.empty()) continue;
+        const bool isDefault = excluded.count(id) != 0;
+        // Query only non-default endpoints: Windows audio sessions can be
+        // inaccurate for exclusive/ASIO drivers, so never trust activity alone.
+        const bool idle = !isDefault && isEndpointKnownIdle(device.Get());
+        candidates.push_back({ isDefault, !idle, looksVirtual(name), idle });
+        found.push_back({ device, name, id });
+    }
+
+    const auto chosen = skellcast::selectSpareOutput(candidates.data(), candidates.size());
+    return chosen >= 0 ? found[static_cast<std::size_t>(chosen)] : ChosenDevice {};
+}
+
+// FL Studio mix format. Windows shared mode converts it when supported.
 WAVEFORMATEX floatStereoFormat(std::uint32_t rate) {
     WAVEFORMATEX format {};
     format.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
@@ -97,12 +194,38 @@ WAVEFORMATEX floatStereoFormat(std::uint32_t rate) {
     format.nAvgBytesPerSec = rate * format.nBlockAlign;
     return format;
 }
+
+bool isCurrentlyDefault(const std::wstring& id) {
+    const auto enumerator = makeEnumerator();
+    if (enumerator.Get() == nullptr) return true; // fail closed
+    const ERole roles[] = { eConsole, eMultimedia, eCommunications };
+    for (const auto role : roles) {
+        ComPtr<IMMDevice> current;
+        const auto hr = enumerator->GetDefaultAudioEndpoint(eRender, role, current.GetAddressOf());
+        if (SUCCEEDED(hr)) {
+            const auto currentId = endpointId(current.Get());
+            if (currentId.empty() || currentId == id) return true;
+        } else if (hr != E_NOTFOUND) return true;
+    }
+    return false;
+}
 } // namespace
 
 DirectCableOutput::DirectCableOutput(std::atomic<float>& sendParam,
                                      std::atomic<float>& desktopParam)
     : send_(sendParam), desktop_(desktopParam) {}
 DirectCableOutput::~DirectCableOutput() { stop(); }
+
+DirectCableOutput::DeviceStatus DirectCableOutput::deviceStatus() const {
+    const std::lock_guard<std::mutex> lock(statusMutex_);
+    return deviceStatus_;
+}
+void DirectCableOutput::setDeviceStatus(DeviceState state, std::wstring name) {
+    const std::lock_guard<std::mutex> lock(statusMutex_);
+    deviceStatus_.state = state;
+    deviceStatus_.name = std::move(name);
+}
+
 void DirectCableOutput::start(std::uint32_t rate) {
     stop();
     sampleRate_.store(rate, std::memory_order_release);
@@ -112,6 +235,7 @@ void DirectCableOutput::start(std::uint32_t rate) {
 void DirectCableOutput::stop() {
     quit_.store(true, std::memory_order_release);
     if (thread_.joinable()) thread_.join();
+    setDeviceStatus(DeviceState::Off);
 }
 void DirectCableOutput::push(const float* left, const float* right, std::size_t count) noexcept {
     const auto accepted = fifo_.push(left, right, count);
@@ -119,29 +243,42 @@ void DirectCableOutput::push(const float* left, const float* right, std::size_t 
 }
 void DirectCableOutput::run() noexcept {
     const ComInit com;
-    if (!com.ready()) return;
-    fifo_.clearConsumer(); // Never replay queued audio from a previous FL transport session.
+    if (!com.ready()) {
+        setDeviceStatus(DeviceState::Error, L"Windows audio unavailable");
+        return;
+    }
+    fifo_.clearConsumer();
     while (!quit_.load(std::memory_order_acquire)) {
         if (!sharing()) {
+            setDeviceStatus(DeviceState::Off);
             fifo_.clearConsumer();
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
             continue;
         }
-        // Device discovery and switching happen on this worker, never in FL's audio callback.
+        setDeviceStatus(DeviceState::Searching);
+        // All endpoint selection and Windows API calls occur on the worker.
         if (!runOutputStream(selectedOutput()))
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
         fifo_.clearConsumer();
     }
+    setDeviceStatus(DeviceState::Off);
 }
+
 bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept {
-    const auto endpoint = target == skellcast::OutputTarget::Desktop
-        ? findDesktopEndpoint() : findVbCable();
-    if (endpoint.Get() == nullptr) return false;
-    const auto activeEndpointId = target == skellcast::OutputTarget::Desktop
-        ? endpointId(endpoint.Get()) : std::wstring {};
+    const auto chosen = target == skellcast::OutputTarget::Desktop
+        ? findSpareDesktopDevice() : findVbCable();
+    if (chosen.device.Get() == nullptr) {
+        setDeviceStatus(DeviceState::NotFound, target == skellcast::OutputTarget::Desktop
+            ? L"No spare output device" : L"VB-CABLE not found");
+        return false;
+    }
+
     ComPtr<IAudioClient> client;
-    if (FAILED(endpoint->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-                               reinterpret_cast<void**>(client.GetAddressOf())))) return false;
+    if (FAILED(chosen.device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                       reinterpret_cast<void**>(client.GetAddressOf())))) {
+        setDeviceStatus(DeviceState::Error, L"Cannot open output");
+        return false;
+    }
 
     const auto runningRate = sampleRate_.load(std::memory_order_acquire);
     auto format = floatStereoFormat(runningRate);
@@ -149,35 +286,51 @@ bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept
                         AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM |
                         AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY |
                         AUDCLNT_STREAMFLAGS_NOPERSIST;
-    // 30 ms shared-mode output buffer (actual event period is determined by Windows).
     constexpr REFERENCE_TIME bufferDuration = 30 * 10000;
     if (FAILED(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, bufferDuration,
-                                  0, &format, nullptr))) return false;
+                                  0, &format, nullptr))) {
+        setDeviceStatus(DeviceState::Error, L"Unsupported device format");
+        return false;
+    }
     EventHandle event;
-    if (!event.handle || FAILED(client->SetEventHandle(event.handle))) return false;
+    if (!event.handle || FAILED(client->SetEventHandle(event.handle))) {
+        setDeviceStatus(DeviceState::Error, L"Cannot start output");
+        return false;
+    }
     ComPtr<IAudioRenderClient> render;
     if (FAILED(client->GetService(__uuidof(IAudioRenderClient),
-                                  reinterpret_cast<void**>(render.GetAddressOf())))) return false;
+                                  reinterpret_cast<void**>(render.GetAddressOf())))) {
+        setDeviceStatus(DeviceState::Error, L"Cannot open audio render");
+        return false;
+    }
     UINT32 bufferFrames = 0;
-    if (FAILED(client->GetBufferSize(&bufferFrames)) || bufferFrames == 0) return false;
-    // Prefill with silence. This avoids consuming frames ahead of the shared engine clock.
+    if (FAILED(client->GetBufferSize(&bufferFrames)) || bufferFrames == 0) {
+        setDeviceStatus(DeviceState::Error, L"Invalid output buffer");
+        return false;
+    }
     BYTE* data = nullptr;
-    if (FAILED(render->GetBuffer(bufferFrames, &data))) return false;
-    if (FAILED(render->ReleaseBuffer(bufferFrames, AUDCLNT_BUFFERFLAGS_SILENT))) return false;
-    if (FAILED(client->Start())) return false;
+    if (FAILED(render->GetBuffer(bufferFrames, &data)) ||
+        FAILED(render->ReleaseBuffer(bufferFrames, AUDCLNT_BUFFERFLAGS_SILENT))) {
+        setDeviceStatus(DeviceState::Error, L"Cannot prefill output");
+        return false;
+    }
+    if (FAILED(client->Start())) {
+        setDeviceStatus(DeviceState::Error, L"Cannot start audio");
+        return false;
+    }
 
+    setDeviceStatus(DeviceState::Connected, chosen.name);
     bool healthy = true;
     unsigned timeouts = 0;
     auto nextDeviceCheck = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     while (!quit_.load(std::memory_order_acquire) && sharing() &&
            selectedOutput() == target &&
            sampleRate_.load(std::memory_order_acquire) == runningRate) {
-        // Follow a changed Windows default device instead of continuing on old speakers.
-        // This check runs only on the WASAPI worker thread, at most once per second.
         if (target == skellcast::OutputTarget::Desktop &&
             std::chrono::steady_clock::now() >= nextDeviceCheck) {
-            const auto selected = findDesktopEndpoint();
-            if (selected.Get() == nullptr || endpointId(selected.Get()) != activeEndpointId) {
+            // Stop if this spare output becomes the Windows default. The
+            // worker will search for a DIFFERENT spare endpoint instead.
+            if (isCurrentlyDefault(chosen.id)) {
                 healthy = false;
                 break;
             }
@@ -190,13 +343,18 @@ bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept
         }
         timeouts = 0;
         UINT32 padding = 0;
-        if (FAILED(client->GetCurrentPadding(&padding)) || padding > bufferFrames) { healthy = false; break; }
+        if (FAILED(client->GetCurrentPadding(&padding)) || padding > bufferFrames) {
+            healthy = false;
+            break;
+        }
         const UINT32 count = bufferFrames - padding;
         if (count == 0) continue;
         data = nullptr;
-        if (FAILED(render->GetBuffer(count, &data)) || !data) { healthy = false; break; }
+        if (FAILED(render->GetBuffer(count, &data)) || !data) {
+            healthy = false;
+            break;
+        }
         auto* samples = reinterpret_cast<float*>(data);
-        // Cap queued latency at about 100 ms. Discard old frames rather than lagging far behind FL.
         const auto queued = fifo_.available();
         const auto maxLatency = static_cast<std::size_t>(runningRate / 10);
         if (queued > maxLatency)
@@ -207,5 +365,6 @@ bool DirectCableOutput::runOutputStream(skellcast::OutputTarget target) noexcept
     }
     client->Stop();
     client->Reset();
+    setDeviceStatus(DeviceState::Searching);
     return healthy;
 }

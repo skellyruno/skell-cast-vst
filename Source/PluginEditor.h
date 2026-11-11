@@ -1,9 +1,7 @@
 #pragma once
-
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-// One large transmit button, plus a small destination toggle.
 class SkellCastPowerButton final : public juce::Button {
 public:
     SkellCastPowerButton();
@@ -16,13 +14,15 @@ public:
     void paintButton(juce::Graphics& g, bool highlighted, bool pressed) override;
 };
 
-class SkellCastEditor final : public juce::AudioProcessorEditor {
+class SkellCastEditor final : public juce::AudioProcessorEditor, private juce::Timer {
 public:
     explicit SkellCastEditor(SkellCastProcessor&);
     ~SkellCastEditor() override = default;
     void paint(juce::Graphics&) override;
     void resized() override;
 private:
+    void timerCallback() override;
+    SkellCastProcessor& processor_;
     SkellCastPowerButton powerButton_;
     SkellCastDestinationSwitch destinationSwitch_;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sendAttachment_;

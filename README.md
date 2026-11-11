@@ -1,50 +1,53 @@
-# SkellCast v0.4 — VST3 with CABLE / DESKTOP destination switch
+# SkellCast v0.5 — automatic safe desktop-device selection
 
-SkellCast is a single Windows VST3 plugin for FL Studio. **No receiver app, extra executable or cloud service.** It copies the signal from the mixer into a nonblocking queue; a dedicated Windows WASAPI worker thread outputs that copy to the selected destination. The original audio reaching the DAW master output remains unchanged.
+Windows x64 VST3 for FL Studio. No receiver executable and no background companion app.
 
-## Plugin controls
+## Controls
 
-- **AUDIO SHARING ON/OFF** — big button; red means OFF and green means ON.
-- **SEND TO: CABLE / DESKTOP** — a small two-way switch beneath the button. CABLE is the default, including for existing project presets.
-- Switching the destination while ON closes the previous output and opens the selected device. Switch position and ON/OFF are saved with the FL Studio project.
-- Green means the ON button is enabled, **not** a verified connection. If the selected device is unavailable, no fallback to speakers or another destination takes place.
+- **AUDIO SHARING**: single large ON/OFF control; green means enabled, red means disabled.
+- **OUTPUT CABLE / DESKTOP**: two small destinations; CABLE is the default, including existing sessions and project presets.
+- **AUTO status**: small line under the switch displays the actual Windows device receiving audio, or a missing-device warning. When ON, green status indicates the Windows audio stream opened; a red status means routing is unavailable.
 
-### CABLE — Discord microphone / OBS audio input
+## CABLE — microphone input for Discord
 
-1. Install [VB-CABLE](https://vb-audio.com/Cable/) (Windows 10/11 x64). Restart if necessary.
-2. In FL Studio, insert SkellCast **last** on the Master mixer.
-3. Choose **CABLE**, press **ON**.
-4. Discord **User Settings > Voice & Video > Input Device**: select **CABLE Output (VB-Audio Virtual Cable)**. Keep Discord output on your normal headphones.
-5. For OBS, add **Audio Input Capture** and select **CABLE Output** instead of capturing the same sound twice.
+1. Install [VB-CABLE](https://vb-audio.com/Cable/) on Windows.
+2. Insert SkellCast as the **last effect** on the FL Studio Master mixer.
+3. Select CABLE, press ON. SkellCast detects the *playback* endpoint named CABLE Input (VB-Audio Virtual Cable).
+4. In Discord > Voice & Video, select **CABLE Output** as the input device. For OBS, add Audio Input Capture using CABLE Output.
 
-SkellCast looks for the Windows *playback* endpoint called **CABLE Input (VB-Audio Virtual Cable)**, which becomes the virtual recording source **CABLE Output** for Discord. Renamed/nonstandard virtual cables are not automatically detected. If VB-CABLE is unavailable, CABLE mode stays silent; it never redirects to your desktop speakers.
+CABLE mode **never falls back to speakers** if VB-CABLE is missing.
 
-### DESKTOP — Windows system playback / OBS Desktop Audio
+## DESKTOP — spare Windows output for OBS, without doubling the default
 
-1. In FL Studio, insert SkellCast last on the Master mixer.
-2. Choose **DESKTOP**, press **ON**.
-3. SkellCast sends an extra copy of the FL signal to Windows' **default playback device** (the ordinary default speakers/headphones selected in Windows Sound settings, not the default communications device). OBS can capture it using **Desktop Audio / Audio Output Capture** for that exact output device.
+Desktop mode now searches Windows playback devices for a **separate non-default, currently idle** output. It excludes all Windows default speaker/headphone output roles, and excludes endpoints with active Windows audio sessions. If multiple candidates exist, it prioritizes a virtual playback device. The selected output's Windows friendly name is shown under the switch.
 
-**IMPORTANT: Avoid duplicate playback.** If FL Studio already sends its main audio to the **same** Windows default speakers/headphones, DESKTOP mode will play a **second copy**, potentially causing echo, phasing and a louder signal. In that case leave SkellCast OFF for desktop capture, or route FL Studio's primary output to a *different* audio interface/device before using DESKTOP. SkellCast does **not** silence or redirect FL Studio's original output. Do not feed captured desktop audio back into FL Studio; feedback can be loud.
+**Critical:** DESKTOP no longer writes to Windows' default speakers/headphones. If your computer has only one playback device, you'll see **No spare output device**; it will send **silence** instead of doubling your audio. This is intentional.
 
-DESKTOP is **not** a Discord microphone input and does not directly control Discord screen share. Discord's normal voice chat still needs CABLE mode or another audio-input setup. Screen sharing desktop audio depends on Discord's screen-share capture settings. This switch only selects where Windows plays the additional audio copy.
+In OBS, add **Audio Output Capture** for the **exact device named in SkellCast's AUTO status**; OBS Desktop Audio set to the normal/default speakers will not automatically capture audio going to a different device.
 
-## Build Windows VST3
+Unlike an actual virtual microphone driver, Desktop mode is not a Discord input. Use CABLE mode for Discord microphone sharing.
 
-Requires Windows x64, Visual Studio 2022/2026 C++ Desktop workload, CMake 3.25+, Git, and network access for JUCE 8.0.17-security unless you specify a local JUCE folder.
+### Important limitations
+
+Windows' shared-mode audio-session enumeration can help avoid active playback endpoints, but it cannot reliably identify FL Studio's ASIO hardware output, direct/exclusive playback, a physical device with multiple Windows endpoints, or other sessions that begin after selection. It is impossible for a regular VST3 to guarantee that a spare endpoint is truly unused in every configuration. The new policy substantially reduces double playback by excluding Windows' default endpoints, but **do not assume it can guarantee zero duplicate sound across ASIO setups**.
+
+If an endpoint becomes a Windows default while Desktop mode is ON, SkellCast stops sending to it and searches for another spare endpoint. Windows default playback devices always remain excluded. Devices can reconnect on the worker thread. SkellCast does not mute or change FL Studio's original sound.
+
+## Build and install
+
+Requires Windows 10/11 x64, Visual Studio 2022/2026 C++ Desktop workload, CMake 3.25+, Git and the JUCE dependency. Build with:
 
 ```powershell
 ./scripts/Build-Windows.ps1
 ```
 
-Or use GitHub **Actions > Windows VST3 Only** and download the **SkellCast-VST3-Windows-x64** artifact. Install the whole `SkellCast.vst3` bundle into `C:\Program Files\Common Files\VST3\` and rescan plugins in FL Studio. Both C and C++ are enabled in CMake (`LANGUAGES C CXX`).
+Or go to **GitHub Actions > Windows VST3 Only** to download the **SkellCast-VST3-Windows-x64** build artifact after the build succeeds. Install the complete `SkellCast.vst3` bundle under `C:\Program Files\Common Files\VST3\`, then rescan in FL Studio.
 
-### Internals and limitations
+### Engineering notes
 
-- The processor's audio callback never waits for Windows audio device access, allocates audio buffers, or selects an endpoint. Output uses a lock-free stereo SPSC FIFO.
-- Output switching occurs entirely on the WASAPI worker. The old endpoint stops before the replacement is started; queued old audio is discarded on the transition.
-- CABLE matches the first active VB-CABLE render endpoint; DESKTOP uses the Windows default eConsole playback endpoint, checks for default-device changes, and reconnects.
-- A 30 ms WASAPI shared-mode buffer and ~100 ms FIFO backlog limit balance stream continuity and latency; some dropout or buffering is possible during device switches.
-- Stereo audio is clipped to [-1,1] for the output copy and Windows shared-mode audio handles sample-rate conversion if supported by the destination.
-- Avoid multiple SkellCast instances on the same master output; they would mix multiple copies into the same endpoint.
-- Test Windows routing and host playback with `TESTING.md`. VST3 build success and core tests alone do not prove correct Discord/OBS routing.
+- One VST3 target, no receiver.
+- Host audio passes through unchanged; a nonblocking stereo FIFO copies to a dedicated WASAPI thread.
+- Device detection, session checks, stream setup, and reconnection never run in FL Studio's audio callback.
+- Selection is fail-closed when the Windows default device roles or session activity cannot be checked.
+- Automatic preference is virtual spare endpoint over physical spare endpoint. In-use Windows audio sessions disqualify endpoints; idle here means the API reported no active shared-mode session when scanned.
+- The ON/OFF and output choice are saved in the project. The AUTO status is live and is not a third control.
