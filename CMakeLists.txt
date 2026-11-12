@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 # JUCE requires both languages even when the plugin code itself is C++.
-project(SkellCast VERSION 0.7.0 LANGUAGES C CXX)
+project(SkellCast VERSION 0.8.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CTest)

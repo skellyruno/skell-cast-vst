@@ -64,9 +64,9 @@ Or go to **GitHub Actions > Windows VST3 Only** to download the **SkellCast-VST3
 - **Important:** with global ON, adding SkellCast to a new Master mixer can begin sharing as soon as the host runs audio. Turn OFF when private audio should not be shared. Also avoid two projects/instances playing into the same destination simultaneously.
 - The previous WASAPI output device selection and audio processing implementation are unchanged.
 
-## v0.7 — final UI polish (Skelcast)
+## v0.7 — midnight-black UI polish (historical)
 
-- **Visible title:** `Skelcast` is a single tightly spaced word. `Skel` is white, `cast` is the Skell Key neon green. Internal plugin identity `SkellCast` and saved parameter IDs are unchanged to preserve FL Studio project compatibility.
+- **Historical v0.7 title:** `Skelcast` was missing the second L, and splitting the title into two independently drawn text boxes created unwanted spacing. Corrected in v0.8. Internal plugin identity `SkellCast` and saved parameter IDs are unchanged to preserve FL Studio project compatibility.
 - Header key emblem replaced by a **small skull only**, adapted from Skell Key's skull silhouette.
 - Midnight-black background and panels, white/light-white labels instead of ivory, slightly brighter green pilot-light glow. No extra control or meter.
 - Compact **272 × 212** interface retained; working CABLE/SPARE routing and global ON/OFF behavior unchanged.
@@ -78,3 +78,11 @@ Skelcast is an audio-share **routing VST3**, not a file recorder. For recordings
 FL Studio's normal live recording and offline audio export continue through the unchanged Master stream: the plugin does **not** modify or mute audio samples. Capturing it in OBS/Discord is real-time and subject to the available output device and recording application's settings.
 
 CPU usage is **not zero**. Stereo samples are copied into a bounded lock-free queue on the audio thread, and Windows WASAPI rendering happens on a separate thread; that avoids expensive device work and allocations in the real-time callback. The core tests now print a **non-gating FIFO throughput measurement**. Actual CPU %, glitches and sustained recording quality still require a Windows/FL Studio/OBS test.
+
+
+## v0.8 — final title correction and tighter UI
+
+- **Visible title is exactly `Skellcast`**: two L's, one word, and no manually inserted gap. The title is laid out as one JUCE glyph arrangement and each glyph is coloured in place: **Skell** bright white and **cast** neon green. There are no separate title text boxes to drift apart with font rendering or display scaling.
+- Preserves midnight black, the small skull-only vector mark, restrained green glow, and the compact 272 × 212 window.
+- Tiny subtitle alignment adjustment. No additional controls or meters.
+- The original `SkellCast` VST3 identity, stored parameter IDs (`send`, `desktop`), Windows audio engine, and global preferences are unchanged so earlier FL Studio projects continue to recognise the plugin.

@@ -53,3 +53,12 @@ ctest --test-dir build-core --output-on-failure
 - [ ] Compare FL Studio Master rendered output with Skelcast enabled vs disabled; it must remain unchanged.
 - [ ] During a longer session, monitor CPU in FL Studio and Windows Task Manager; watch for dropouts, underruns and stuck shutdown.
 - [ ] Confirm multiple windows/instances don't share the same audio route unintentionally.
+
+
+## v0.8 final visual checks
+
+- [x] Source uses one shaped string `Skellcast` (two L's, no inserted whitespace), and colours glyphs after the fifth letter.
+- [x] Skull-only logo, midnight black, white and neon-green palette retained.
+- [ ] Confirm exact v0.8 Windows VST3 compile and portable core tests in GitHub Actions.
+- [ ] Open the plugin in FL Studio at 100% and high-DPI scaling; visually confirm no title gap, clipping or overlap with skull/subtitle.
+- [ ] Confirm CABLE/SPARE and the global ON/OFF persistence still work unchanged.

@@ -1,7 +1,7 @@
 #include "PluginEditor.h"
 
 namespace {
-// Final Skelcast skin: midnight black, white labels, signature neon green.
+// Final Skellcast skin: midnight black, white labels, signature neon green.
 const juce::Colour background {0xff050607};
 const juce::Colour panel      {0xff090c0a};
 const juce::Colour raised     {0xff101612};
@@ -156,28 +156,19 @@ void SkellCastEditor::paint(juce::Graphics& g) {
 
     drawSkullMark(g, 16.0f, 16.0f);
 
-    // Proportional glyph measurement makes Skelcast ONE tight word,
-    // not two fixed text boxes separated by a large artificial gap.
-    const auto font = labelFont(21.0f);
-    juce::GlyphArrangement glyphs;
-    glyphs.addLineOfText(font, "Skel", 0.0f, 0.0f);
-    const float firstWidth = glyphs.getBoundingBox(0, -1, true).getWidth();
-    constexpr float titleX = 48.0f, titleY = 15.0f, titleH = 29.0f;
-    const float castX = titleX + firstWidth + 0.5f;
-    g.setFont(font);
-    g.setColour(bone);
-    g.drawText("Skel", juce::Rectangle<float>(titleX, titleY, firstWidth + 2.0f, titleH),
-               juce::Justification::centredLeft, false);
-    auto castArea = juce::Rectangle<float>(castX, titleY, 70.0f, titleH);
-    g.setColour(accent.withAlpha(0.14f));
-    g.drawText("cast", castArea.expanded(0.7f, 0.0f),
-               juce::Justification::centredLeft, false);
-    g.setColour(accent);
-    g.drawText("cast", castArea, juce::Justification::centredLeft, false);
+    // Shape the title as ONE word with natural font spacing.
+    // Colour the first five glyphs white and the final four green.
+    // No split text boxes, manual gap or extra kerning at the transition.
+    juce::GlyphArrangement title;
+    title.addLineOfText(labelFont(21.0f), "Skellcast", 48.0f, 36.0f);
+    for (int i = 0; i < title.getNumGlyphs(); ++i) {
+        g.setColour(i < 5 ? bone : accent);
+        title.getGlyph(i).draw(g);
+    }
 
     g.setFont(labelFont(9.0f));
     g.setColour(boneDim);
-    g.drawText("STREAM / SHARE", 48, 43, getWidth() - 64, 13,
+    g.drawText("STREAM / SHARE", 49, 43, getWidth() - 64, 13,
                juce::Justification::centredLeft);
 
     g.setColour(boneDim);
