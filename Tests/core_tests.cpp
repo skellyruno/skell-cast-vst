@@ -46,6 +46,9 @@ int main() {
     CHECK(AudioFifo<>::sanitize(std::numeric_limits<float>::quiet_NaN()) == 0.0f);
     CHECK(AudioFifo<>::sanitize(2.0f) == 1.0f);
     CHECK(AudioFifo<>::sanitize(-3.0f) == -1.0f);
+    CHECK(AudioFifo<>::sanitize(std::numeric_limits<float>::denorm_min()) == 0.0f);
+    CHECK(AudioFifo<>::sanitize(-std::numeric_limits<float>::denorm_min()) == 0.0f);
+    CHECK(AudioFifo<>::sanitize(0.25f) == 0.25f);
     AudioFifo<8> fifo;
     const float left[10] = {0.1f,0.2f,0.3f,0.4f,0.5f,0.6f,0.7f,0.8f,0.9f,1};
     const float right[10] = {-0.1f,-0.2f,-0.3f,-0.4f,-0.5f,-0.6f,-0.7f,-0.8f,-0.9f,-1};
