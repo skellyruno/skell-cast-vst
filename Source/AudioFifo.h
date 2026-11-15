@@ -53,7 +53,11 @@ public:
         return static_cast<std::size_t>(write_.load(std::memory_order_acquire) - read_.load(std::memory_order_acquire));
     }
     static float sanitize(float f) noexcept {
-        // Flush subnormal values before they reach the output thread to avoid\n        // denormal slowdowns on hosts that do not enable FTZ/DAZ.\n        if (!std::isfinite(f) || std::fpclassify(f) == FP_SUBNORMAL)\n            return 0.0f;\n        return std::max(-1.0f, std::min(1.0f, f));
+        // Flush subnormal values before they reach the output thread to avoid
+        // denormal slowdowns on hosts that do not enable FTZ/DAZ.
+        if (!std::isfinite(f) || std::fpclassify(f) == FP_SUBNORMAL)
+            return 0.0f;
+        return std::max(-1.0f, std::min(1.0f, f));
     }
 private:
     std::array<StereoFrame, Capacity> frames_ {};
