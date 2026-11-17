@@ -62,3 +62,27 @@ ctest --test-dir build-core --output-on-failure
 - [ ] Confirm exact v0.8 Windows VST3 compile and portable core tests in GitHub Actions.
 - [ ] Open the plugin in FL Studio at 100% and high-DPI scaling; visually confirm no title gap, clipping or overlap with skull/subtitle.
 - [ ] Confirm CABLE/SPARE and the global ON/OFF persistence still work unchanged.
+
+
+## Windows release-package validation
+
+- [x] Baseline Windows VST3 artifact inspected: Actions run #43776801697, artifact #14186867360, source commit `04ecc85099c17f3c1302d313015094a70bb99038`.
+- [x] Baseline archive and binary SHA-256 values recorded in `docs/RELEASE_BASELINE_2026-11-16.md`; the original Actions artifact remains preserved.
+- [ ] Run package verifier regression tests (Python 3.12+).
+- [ ] Require exactly one Release `SkellCast.vst3` bundle and one AMD64 PE32+ module.
+- [ ] Parse `moduleinfo.json` as strict JSON after string-aware normalization in the staged copy only.
+- [ ] Verify product/vendor/version, processor/controller categories and unique class IDs.
+- [ ] Generate build provenance, preview-only/readiness notices and SHA-256 manifest.
+- [ ] Run pluginval strictness 5 before artifact upload.
+- [ ] Confirm the artifact contains one flat VST3 bundle and no nested ZIP or Standalone executable.
+- [ ] Confirm the single advertised VST3 program is named `Default` and global sharing remains OFF by default.
+- [ ] Confirm the global sharing default and user-facing consent wording remain opt-in.
+- [ ] Preserve an existing local package before replacing it.
+
+### Release blockers not cleared by CI
+
+- Vendor URL and support email require owner-approved values.
+- JUCE and third-party license notices need review and packaging.
+- FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
+- The global per-user audio-sharing toggle must remain opt-in (OFF by default) and its ON behavior must be clearly explained; this packaging change does not alter it.
+- Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
