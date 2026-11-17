@@ -170,6 +170,12 @@ class PackageVerifierTests(unittest.TestCase):
             self.assertEqual(info["source_ref"], "release/test-branch")
             self.assertEqual(info["event"], "pull_request")
 
+    def test_global_audio_sharing_defaults_off(self):
+        header = Path(__file__).resolve().parents[2] / "Source" / "GlobalSettings.h"
+        source = header.read_text(encoding="utf-8")
+        self.assertRegex(source, r"std::atomic<bool>\\s+send_\\s*\\{false\\}")
+        self.assertRegex(source, r"std::atomic<bool>\\s+spare_\\s*\\{false\\}")
+
 
 if __name__ == "__main__":
     unittest.main()

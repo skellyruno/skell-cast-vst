@@ -76,6 +76,7 @@ ctest --test-dir build-core --output-on-failure
 - [ ] Run pluginval strictness 5 before artifact upload.
 - [ ] Confirm the artifact contains one flat VST3 bundle and no nested ZIP or Standalone executable.
 - [ ] Confirm the single advertised VST3 program is named `Default` and global sharing remains OFF by default.
+- [ ] Confirm the global sharing default and user-facing consent wording remain opt-in.
 - [ ] Preserve an existing local package before replacing it.
 
 ### Release blockers not cleared by CI
@@ -85,4 +86,4 @@ ctest --test-dir build-core --output-on-failure
 - FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
 - The global per-user audio-sharing toggle must remain opt-in (OFF by default) and its ON behavior must be clearly explained; this packaging change does not alter it.
 - Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
-\n\n- [ ] Confirm the advertised single VST3 program has a non-empty host-visible name (`Default`) under pluginval.\n
+\n
