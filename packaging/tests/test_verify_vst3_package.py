@@ -146,7 +146,7 @@ class PackageVerifierTests(unittest.TestCase):
         source = header.read_text(encoding="utf-8")
         self.assertRegex(
             source,
-            r'getProgramName\\s*\\(\\s*int\\s+index\\s*\\)\\s*override\\s*\\{\\s*return\\s+index\\s*==\\s*0\\s*\\?\\s*"Default"\\s*:\\s*juce::String\\(\\)\\s*;\\s*\\}'
+            r'getProgramName\s*\(\s*int\s+index\s*\)\s*override\s*\{\s*return\s+index\s*==\s*0\s*\?\s*"Default"\s*:\s*juce::String\(\)\s*;\s*}'
         )
 
 
