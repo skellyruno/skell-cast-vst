@@ -10,28 +10,35 @@ on:
       - 'CMakeLists.txt'
       - 'Source/**'
       - 'Tests/**'
+      - 'packaging/**'
       - 'scripts/**'
+      - 'README.md'
+      - 'TESTING.md'
       - '.github/workflows/build.yml'
   pull_request:
     paths:
       - 'CMakeLists.txt'
       - 'Source/**'
       - 'Tests/**'
+      - 'packaging/**'
       - 'scripts/**'
+      - 'README.md'
+      - 'TESTING.md'
       - '.github/workflows/build.yml'
 
 permissions:
   contents: read
 
+# Only superseded PR runs may be cancelled. Manual and main builds are protected.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: skellcast-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    name: Build and verify SkellCast VST3
+    name: Build, validate and package SkellCast VST3
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
@@ -39,42 +46,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure (Windows x64, JUCE, core tests)
+      - name: Set up Python for package validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Configure Windows x64 VST3 and core tests
         run: |
           cmake -S . -B build -A x64 -DBUILD_TESTING=ON
           if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed' }
 
-      - name: Build Release
+      - name: Build Release VST3
         run: |
           cmake --build build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'SkellCast VST3 build failed' }
 
-      - name: Run core tests
+      - name: Run core regression tests
         run: |
           ctest --test-dir build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'SkellCast core tests failed' }
 
-      - name: Package validated VST3 only
+      - name: Test release package verifier
+        run: python -m unittest discover -s packaging/tests -v
+
+      - name: Stage and verify Windows VST3 package
         run: |
           & ./scripts/Package-Windows.ps1
-          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw 'VST3 packaging failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'SkellCast VST3 packaging failed' }
 
-      - name: Verify distributable Windows binary
-        run: |
-          $package = 'out/SkellCast-VST3-Windows-x64'
-          $bundle = Join-Path $package 'SkellCast.vst3'
-          $binary = Join-Path $bundle 'Contents/x86_64-win/SkellCast.vst3'
-          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
-            throw 'Compiled SkellCast.vst3 Windows binary missing'
-          }
-          $bytes = (Get-Item -LiteralPath $binary).Length
-          if ($bytes -lt 10000) { throw "VST3 binary unexpectedly small: $bytes bytes" }
-          Write-Host "Validated SkellCast.vst3 ($bytes bytes). No standalone receiver required."
+      - name: Validate SkellCast with pluginval strictness 5
+        uses: Tracktion/pluginval/validate@v2.0.0-beta3
+        with:
+          plugins: out/SkellCast-VST3-Windows-x64/SkellCast.vst3
+          strictness-level: 5
+          pluginval-version: v2.0.0-beta3
 
-      - name: Upload SkellCast VST3
+      - name: Upload verified Windows VST3 preview
         uses: actions/upload-artifact@v4
         with:
-          name: SkellCast-VST3-Windows-x64
+          name: SkellCast-VST3-Windows-x64-verified
           path: out/SkellCast-VST3-Windows-x64/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+          compression-level: 0

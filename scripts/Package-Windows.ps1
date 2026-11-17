@@ -1,22 +1,39 @@
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $build = Join-Path $repo 'build'
-$dist = Join-Path $repo 'out/SkellCast-VST3-Windows-x64'
-if (Test-Path $dist) { Remove-Item -Path $dist -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$bundles = @(Get-ChildItem -Path $build -Directory -Recurse -ErrorAction Stop |
-    Where-Object { $_.Name -eq 'SkellCast.vst3' -and $_.FullName -match '(\\|/)Release(\\|/)' })
-$bundle = $bundles | Where-Object {
-    Test-Path (Join-Path $_.FullName 'Contents/x86_64-win/SkellCast.vst3')
-} | Select-Object -First 1
-if (-not $bundle) {
-    throw 'Could not find a validated Release SkellCast.vst3 Windows bundle containing Contents/x86_64-win/SkellCast.vst3'
+$outRoot = Join-Path $repo 'out'
+$dist = Join-Path $outRoot 'SkellCast-VST3-Windows-x64'
+$stage = Join-Path $outRoot '.SkellCast-VST3-Windows-x64-staging'
+$verifier = Join-Path $repo 'packaging/verify_vst3_package.py'
+
+New-Item -ItemType Directory -Force -Path $outRoot | Out-Null
+if (Test-Path -LiteralPath $stage) {
+    Remove-Item -LiteralPath $stage -Recurse -Force
 }
-Copy-Item -Path $bundle.FullName -Destination $dist -Recurse -Force
-$binary = Join-Path $dist 'SkellCast.vst3/Contents/x86_64-win/SkellCast.vst3'
-if (-not (Test-Path $binary) -or (Get-Item $binary).Length -lt 10000) {
-    throw 'VST3 Windows binary is missing or unexpectedly small.'
+
+# Validate into a fresh staging directory first. A failed package must not
+# delete the last known-good local preview package.
+& python $verifier --source-dir $build --package-dir $stage --repo-root $repo
+if ($LASTEXITCODE -ne 0) { throw 'SkellCast VST3 package validation failed' }
+
+$previous = $null
+if (Test-Path -LiteralPath $dist) {
+    $backupRoot = Join-Path $outRoot 'previous'
+    New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+    $previous = Join-Path $backupRoot "SkellCast-VST3-Windows-x64-$stamp"
+    Move-Item -LiteralPath $dist -Destination $previous
 }
-Copy-Item (Join-Path $repo 'README.md') $dist
-Copy-Item (Join-Path $repo 'TESTING.md') $dist
-Write-Host "Packaged only the VST3: $dist"
+
+try {
+    Move-Item -LiteralPath $stage -Destination $dist
+}
+catch {
+    if ($previous -and (Test-Path -LiteralPath $previous) -and -not (Test-Path -LiteralPath $dist)) {
+        Move-Item -LiteralPath $previous -Destination $dist
+    }
+    throw
+}
+
+Write-Host "Packaged verified Windows x64 VST3 preview: $dist"
+if ($previous) { Write-Host "Previous package preserved at: $previous" }
