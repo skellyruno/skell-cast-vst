@@ -157,8 +157,10 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
     info = {
         "product": NAME, "release_status": "preview-only; not a commercial release",
         "format": "VST3", "platform": "Windows x86_64", "version": VERSION,
-        "vendor": VENDOR, "source_commit": os.getenv("GITHUB_SHA", "local-unrecorded"),
-        "source_ref": os.getenv("GITHUB_REF", "local-unrecorded"),
+        "vendor": VENDOR, "source_commit": os.getenv("SKELL_SOURCE_COMMIT", os.getenv("GITHUB_SHA", "local-unrecorded")),
+        "ci_commit": os.getenv("GITHUB_SHA", "local-unrecorded"),
+        "source_ref": os.getenv("SKELL_SOURCE_REF", os.getenv("GITHUB_REF", "local-unrecorded")),
+        "event": os.getenv("GITHUB_EVENT_NAME", "local"),
         "workflow_run_id": os.getenv("GITHUB_RUN_ID", "local-unrecorded"),
         "workflow_run_attempt": os.getenv("GITHUB_RUN_ATTEMPT", "local-unrecorded"),
         "plugin": plugin,
@@ -175,7 +177,7 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
             "owner-approved vendor URL and support email",
             "JUCE and third-party license review and notices",
             "FL Studio project recall and OBS/WASAPI manual acceptance",
-            "explicit user acceptance of global audio-sharing default-on behavior",
+            "verify global audio-sharing remains opt-in and its ON behavior is clearly explained to users",
             "signed installer, updater, backup and rollback",
             "target-hardware CPU, latency and long-session glitch tests"],
     }
@@ -184,8 +186,8 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
     (package_dir / "PREVIEW-ONLY.txt").write_text(
         "SkellCast Windows x64 VST3 preview package.\n"
         "Not a commercial release and not a signed installer.\n"
-        "Read README.md before use. AUDIO SHARING is a global per-user preference;\n"
-        "set it OFF before playback unless you explicitly intend to share audio.\n"
+        "Read README.md before use. AUDIO SHARING is a global per-user opt-in preference;\n"
+        "the default is OFF. Confirm it remains OFF unless you explicitly intend to share.\n"
         "Back up existing plugin installations and FL Studio projects before testing.\n",
         encoding="utf-8", newline="\n")
     lines = []

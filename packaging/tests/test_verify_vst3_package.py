@@ -1,10 +1,12 @@
 import hashlib
 import json
+import os
 import re
 import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -148,6 +150,25 @@ class PackageVerifierTests(unittest.TestCase):
             source,
             r'getProgramName\s*\(\s*int\s+index\s*\)\s*override\s*\{\s*return\s+index\s*==\s*0\s*\?\s*"Default"\s*:\s*juce::String\(\)\s*;\s*}'
         )
+
+    def test_build_info_records_source_head_separately_from_ci_merge(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo, build = self.make_repo(root)
+            self.make_bundle(build)
+            package = root / "package"
+            with patch.dict(os.environ, {
+                "SKELL_SOURCE_COMMIT": "source-head-sha",
+                "GITHUB_SHA": "ci-merge-sha",
+                "SKELL_SOURCE_REF": "release/test-branch",
+                "GITHUB_EVENT_NAME": "pull_request",
+            }):
+                stage_package(build, package, repo)
+            info = json.loads((package / "build-info.json").read_text())
+            self.assertEqual(info["source_commit"], "source-head-sha")
+            self.assertEqual(info["ci_commit"], "ci-merge-sha")
+            self.assertEqual(info["source_ref"], "release/test-branch")
+            self.assertEqual(info["event"], "pull_request")
 
 
 if __name__ == "__main__":

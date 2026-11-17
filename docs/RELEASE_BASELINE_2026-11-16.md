@@ -7,4 +7,6 @@ The package contains `SkellCast.vst3/Contents/x86_64-win/SkellCast.vst3` (5,473,
 Confirmed defects: JUCE trailing commas make the baseline moduleinfo invalid strict JSON; no provenance or SHA-256 manifest exists; the packaging script selects the first matching Release bundle instead of rejecting duplicates; vendor URL and support email are blank and require owner-approved values.
 
 The original Actions artifact remains preserved. This packaging work does not change DSP, UI, global preferences, parameter IDs or project state. FL Studio, OBS/WASAPI, pass-through A/B, CPU/latency, licensing, signing, installer, updater and rollback remain open. This is a preview candidate, not a commercial release.
-\n\nAdditional host-compatibility finding: the baseline source advertises one program but returned an empty program name. PR #4 changes only the host-visible program label to `Default`; no program count, preset state, parameter IDs or audio processing changes. Pluginval strictness 5 must confirm this on the exact head.\n
+
+
+Additional host-compatibility finding: the baseline source advertises one program but returned an empty program name. PR #4 changes only the host-visible program label to `Default`; no program count, preset state, parameter IDs or audio processing changes. Pluginval strictness 5 must confirm this on the exact head.

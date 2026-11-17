@@ -75,6 +75,7 @@ ctest --test-dir build-core --output-on-failure
 - [ ] Generate build provenance, preview-only/readiness notices and SHA-256 manifest.
 - [ ] Run pluginval strictness 5 before artifact upload.
 - [ ] Confirm the artifact contains one flat VST3 bundle and no nested ZIP or Standalone executable.
+- [ ] Confirm the single advertised VST3 program is named `Default` and global sharing remains OFF by default.
 - [ ] Preserve an existing local package before replacing it.
 
 ### Release blockers not cleared by CI
@@ -82,6 +83,6 @@ ctest --test-dir build-core --output-on-failure
 - Vendor URL and support email require owner-approved values.
 - JUCE and third-party license notices need review and packaging.
 - FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
-- The global per-user audio-sharing ON default needs explicit user acceptance; this packaging change does not alter it.
+- The global per-user audio-sharing toggle must remain opt-in (OFF by default) and its ON behavior must be clearly explained; this packaging change does not alter it.
 - Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
 \n\n- [ ] Confirm the advertised single VST3 program has a non-empty host-visible name (`Default`) under pluginval.\n
