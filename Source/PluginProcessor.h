@@ -5,7 +5,6 @@
 
 class SkellCastProcessor final : public juce::AudioProcessor,
                                   private juce::AudioProcessorValueTreeState::Listener,
-                                  private juce::AsyncUpdater,
                                   private juce::Timer {
 public:
     SkellCastProcessor();
@@ -36,7 +35,6 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParams();
     void parameterChanged(const juce::String& id, float value) override;
-    void handleAsyncUpdate() override;
     void timerCallback() override;
     void applyGlobalSettings();
 
