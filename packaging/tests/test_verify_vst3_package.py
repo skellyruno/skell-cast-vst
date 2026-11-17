@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import struct
 import sys
 import tempfile
@@ -139,6 +140,14 @@ class PackageVerifierTests(unittest.TestCase):
             self.assertEqual(len(warnings), 2)
             self.assertIn("vendor URL is blank", warnings[0])
             self.assertIn("support email is blank", warnings[1])
+
+    def test_advertised_program_has_nonempty_host_name(self):
+        header = Path(__file__).resolve().parents[2] / "Source" / "PluginProcessor.h"
+        source = header.read_text(encoding="utf-8")
+        self.assertRegex(
+            source,
+            r'getProgramName\\s*\\(\\s*int\\s+index\\s*\\)\\s*override\\s*\\{\\s*return\\s+index\\s*==\\s*0\\s*\\?\\s*"Default"\\s*:\\s*juce::String\\(\\)\\s*;\\s*\\}'
+        )
 
 
 if __name__ == "__main__":
