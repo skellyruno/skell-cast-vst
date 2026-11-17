@@ -99,7 +99,10 @@ def validate_bundle(bundle: Path) -> dict[str, Any]:
         raise PackageValidationError(f"{metadata_path}: invalid JSON: {exc}") from exc
     if not isinstance(meta, dict) or meta.get("Name") != NAME or meta.get("Version") != VERSION:
         raise PackageValidationError(f"{metadata_path}: product name/version mismatch")
-    factory, entries = meta.get("Factory Info") or {}, meta.get("Classes")
+    factory = meta.get("Factory Info")
+    entries = meta.get("Classes")
+    if not isinstance(factory, dict):
+        raise PackageValidationError(f"{metadata_path}: Factory Info must be an object")
     if factory.get("Vendor") != VENDOR:
         raise PackageValidationError(f"{metadata_path}: vendor mismatch")
     if not isinstance(entries, list) or len(entries) != 2:
@@ -109,7 +112,7 @@ def validate_bundle(bundle: Path) -> dict[str, Any]:
         if not isinstance(entry, dict):
             raise PackageValidationError(f"{metadata_path}: class entry must be an object")
         category, cid = entry.get("Category"), entry.get("CID")
-        if category not in CLASSES or not isinstance(cid, str) or not CID_RE.fullmatch(cid):
+        if not isinstance(category, str) or category not in CLASSES or not isinstance(cid, str) or not CID_RE.fullmatch(cid):
             raise PackageValidationError(f"{metadata_path}: invalid VST3 class category or CID")
         if cid.upper() in cids:
             raise PackageValidationError(f"{metadata_path}: duplicate VST3 class ID {cid}")
