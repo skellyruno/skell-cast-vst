@@ -86,3 +86,10 @@ CPU usage is **not zero**. Stereo samples are copied into a bounded lock-free qu
 - Preserves midnight black, the small skull-only vector mark, restrained green glow, and the compact 272 × 212 window.
 - Tiny subtitle alignment adjustment. No additional controls or meters.
 - The original `SkellCast` VST3 identity, stored parameter IDs (`send`, `desktop`), Windows audio engine, and global preferences are unchanged so earlier FL Studio projects continue to recognise the plugin.
+
+
+## Verified Windows preview packaging
+
+The Windows package step requires Python 3.12+ (standard library only) in addition to the existing Visual Studio, CMake, Git and JUCE prerequisites. It validates the single x64 VST3 bundle, normalizes JUCE's trailing-comma `moduleinfo.json` only in the staged copy, records build provenance, and writes `SHA256SUMS.txt`. The CI job also runs the package regression suite and pluginval strictness 5.
+
+The resulting artifact is explicitly preview-only. Vendor URL/support email, third-party licensing, FL Studio/OBS/WASAPI acceptance, the global audio-sharing default, signing, installer, updater and rollback still require separate owner/engineering acceptance. Do not distribute it as a commercial release.
