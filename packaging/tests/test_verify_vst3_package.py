@@ -183,7 +183,7 @@ class PackageVerifierTests(unittest.TestCase):
             repo, build = self.make_repo(root)
             bundle = self.make_bundle(build)
             metadata_path = bundle / "Contents/Resources/moduleinfo.json"
-            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8"))))
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
             metadata["Factory Info"] = "not-an-object"
             metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
             with self.assertRaisesRegex(PackageValidationError, "Factory Info must be an object"):
@@ -195,7 +195,7 @@ class PackageVerifierTests(unittest.TestCase):
             repo, build = self.make_repo(root)
             bundle = self.make_bundle(build)
             metadata_path = bundle / "Contents/Resources/moduleinfo.json"
-            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8"))))
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
             metadata["Classes"][0]["Category"] = []
             metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
             with self.assertRaisesRegex(PackageValidationError, "invalid VST3 class category or CID"):
