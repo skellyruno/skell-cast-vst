@@ -84,3 +84,4 @@ ctest --test-dir build-core --output-on-failure
 - FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
 - The global per-user audio-sharing ON default needs explicit user acceptance; this packaging change does not alter it.
 - Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
+\n\n- [ ] Confirm the advertised single VST3 program has a non-empty host-visible name (`Default`) under pluginval.\n
