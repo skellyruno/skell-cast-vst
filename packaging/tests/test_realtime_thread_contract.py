@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Source-contract regression tests for SkellCast real-time parameter notifications."""
 from pathlib import Path
-import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
