@@ -86,4 +86,3 @@ ctest --test-dir build-core --output-on-failure
 - FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
 - The global per-user audio-sharing toggle must remain opt-in (OFF by default) and its ON behavior must be clearly explained; this packaging change does not alter it.
 - Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
-\n
