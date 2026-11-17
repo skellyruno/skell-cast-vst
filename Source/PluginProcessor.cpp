@@ -24,14 +24,13 @@ SkellCastProcessor::SkellCastProcessor()
     state.addParameterListener("send", this);
     state.addParameterListener("desktop", this);
     if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
-        startTimerHz(4); // Synchronise other open instances, with no audio-thread work.
+        startTimerHz(4); // Synchronise instances and drain off-thread changes on the message thread.
 }
 
 SkellCastProcessor::~SkellCastProcessor() {
     stopTimer();
     state.removeParameterListener("send", this);
     state.removeParameterListener("desktop", this);
-    cancelPendingUpdate();
     if (auto* mm = juce::MessageManager::getInstanceWithoutCreating();
         mm != nullptr && mm->isThisTheMessageThread())
         SkellCastGlobalSettings::instance().saveIfDirty();
@@ -60,16 +59,14 @@ void SkellCastProcessor::parameterChanged(const juce::String& id, float value) {
     auto& settings = SkellCastGlobalSettings::instance();
     if (id == "send") settings.changeSend(value >= 0.5f);
     else if (id == "desktop") settings.changeSpare(value >= 0.5f);
-    // No disk I/O on a DAW automation/audio thread.
+
+    // Off-thread automation only updates atomics. The 4 Hz message-thread timer
+    // persists dirty settings; never post a message from a real-time callback.
     if (auto* mm = juce::MessageManager::getInstanceWithoutCreating();
         mm != nullptr && mm->isThisTheMessageThread())
         settings.saveIfDirty();
-    else
-        triggerAsyncUpdate();
 }
-void SkellCastProcessor::handleAsyncUpdate() {
-    SkellCastGlobalSettings::instance().saveIfDirty();
-}
+
 void SkellCastProcessor::timerCallback() {
     applyGlobalSettings();
     SkellCastGlobalSettings::instance().saveIfDirty();
