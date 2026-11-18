@@ -99,7 +99,10 @@ def validate_bundle(bundle: Path) -> dict[str, Any]:
         raise PackageValidationError(f"{metadata_path}: invalid JSON: {exc}") from exc
     if not isinstance(meta, dict) or meta.get("Name") != NAME or meta.get("Version") != VERSION:
         raise PackageValidationError(f"{metadata_path}: product name/version mismatch")
-    factory, entries = meta.get("Factory Info") or {}, meta.get("Classes")
+    factory = meta.get("Factory Info")
+    entries = meta.get("Classes")
+    if not isinstance(factory, dict):
+        raise PackageValidationError(f"{metadata_path}: Factory Info must be an object")
     if factory.get("Vendor") != VENDOR:
         raise PackageValidationError(f"{metadata_path}: vendor mismatch")
     if not isinstance(entries, list) or len(entries) != 2:
@@ -109,7 +112,7 @@ def validate_bundle(bundle: Path) -> dict[str, Any]:
         if not isinstance(entry, dict):
             raise PackageValidationError(f"{metadata_path}: class entry must be an object")
         category, cid = entry.get("Category"), entry.get("CID")
-        if category not in CLASSES or not isinstance(cid, str) or not CID_RE.fullmatch(cid):
+        if not isinstance(category, str) or category not in CLASSES or not isinstance(cid, str) or not CID_RE.fullmatch(cid):
             raise PackageValidationError(f"{metadata_path}: invalid VST3 class category or CID")
         if cid.upper() in cids:
             raise PackageValidationError(f"{metadata_path}: duplicate VST3 class ID {cid}")
@@ -154,6 +157,10 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
         if not source.is_file():
             raise PackageValidationError(f"required package document missing: {filename}")
         shutil.copy2(source, package_dir / filename)
+    installer = repo_root / "scripts" / "Install-SkellCast.ps1"
+    if not installer.is_file():
+        raise PackageValidationError("required private-preview installer missing: scripts/Install-SkellCast.ps1")
+    shutil.copy2(installer, package_dir / "Install-SkellCast.ps1")
     info = {
         "product": NAME, "release_status": "preview-only; not a commercial release",
         "format": "VST3", "platform": "Windows x86_64", "version": VERSION,
@@ -172,13 +179,14 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
         "confirmed_package_checks": [
             "single Windows x64 VST3 bundle", "AMD64 PE32+ module",
             "strict moduleinfo.json after staging normalization",
-            "unique processor/controller class IDs", "build provenance and SHA-256 manifest"],
+            "unique processor/controller class IDs", "build provenance and SHA-256 manifest",
+            "private-preview PowerShell install/update/backup/rollback helper included"],
         "open_release_gates": [
             "owner-approved vendor URL and support email",
             "JUCE and third-party license review and notices",
             "FL Studio project recall and OBS/WASAPI manual acceptance",
             "verify global audio-sharing remains opt-in and its ON behavior is clearly explained to users",
-            "signed installer, updater, backup and rollback",
+            "code signing and owner-side Windows install/update/rollback acceptance",
             "target-hardware CPU, latency and long-session glitch tests"],
     }
     (package_dir / "RELEASE-READINESS.json").write_text(
