@@ -1,16 +1,8 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$PackageRoot,
-
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$InstallerPath,
-
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [string]$TestRoot
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$PackageRoot,
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$InstallerPath,
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$TestRoot
 )
 
 Set-StrictMode -Version Latest
@@ -22,11 +14,9 @@ function Assert([bool]$Condition, [string]$Message) {
     $script:assertions++
     if (-not $Condition) { throw $Message }
 }
-
 function Get-Hash([string]$Path) {
-    (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
 }
-
 function Write-PackageChecksums([string]$Root) {
     $rootFull = [System.IO.Path]::GetFullPath($Root)
     $sumPath = Join-Path $rootFull 'SHA256SUMS.txt'
@@ -40,16 +30,27 @@ function Write-PackageChecksums([string]$Root) {
     }
     [System.IO.File]::WriteAllLines($sumPath, [string[]]$lines, [System.Text.Encoding]::ASCII)
 }
-
 function Invoke-ExpectedFailure([scriptblock]$Action, [string]$Message) {
     $failed = $false
-    try { & $Action }
-    catch { $failed = $true }
+    try { & $Action } catch { $failed = $true }
     Assert $failed $Message
 }
-
 function Copy-Package([string]$Source, [string]$Destination) {
     Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -ErrorAction Stop
+}
+function Set-PackageVersion([string]$Root, [string]$Version) {
+    $moduleInfoPath = Join-Path $Root 'SkellCast.vst3\Contents\Resources\moduleinfo.json'
+    $moduleInfo = Get-Content -LiteralPath $moduleInfoPath -Raw | ConvertFrom-Json
+    $moduleInfo.Version = $Version
+    foreach ($class in $moduleInfo.Classes) { $class.Version = $Version }
+    [System.IO.File]::WriteAllText($moduleInfoPath, (($moduleInfo | ConvertTo-Json -Depth 20) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+
+    $buildInfoPath = Join-Path $Root 'build-info.json'
+    $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
+    $buildInfo.version = $Version
+    $buildInfo.plugin.version = $Version
+    [System.IO.File]::WriteAllText($buildInfoPath, (($buildInfo | ConvertTo-Json -Depth 20) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+    Write-PackageChecksums $Root
 }
 
 $package = [System.IO.Path]::GetFullPath($PackageRoot)
@@ -63,9 +64,7 @@ if ([string]::Equals($testRoot.TrimEnd([char[]]@('\', '/')), $pathRoot.TrimEnd([
     throw 'Refusing a filesystem root as the test root.'
 }
 $parent = [System.IO.Path]::GetDirectoryName($testRoot)
-if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
-    New-Item -ItemType Directory -Path $parent -Force | Out-Null
-}
+if (-not (Test-Path -LiteralPath $parent -PathType Container)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
 New-Item -ItemType Directory -Path $testRoot -ErrorAction Stop | Out-Null
 $token = [Guid]::NewGuid().ToString('N')
 $marker = Join-Path $testRoot ('.skellcast-test-root-' + $token)
@@ -93,20 +92,7 @@ try {
 
     $packageV2 = Join-Path $testRoot 'package-v2'
     Copy-Package $packageV1 $packageV2
-    $moduleInfoPath = Join-Path $packageV2 'SkellCast.vst3\Contents\Resources\moduleinfo.json'
-    $moduleInfo = Get-Content -LiteralPath $moduleInfoPath -Raw | ConvertFrom-Json
-    $moduleInfo.Version = '0.8.1'
-    foreach ($class in $moduleInfo.Classes) { $class.Version = '0.8.1' }
-    [System.IO.File]::WriteAllText($moduleInfoPath, (($moduleInfo | ConvertTo-Json -Depth 20) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
-
-    $buildInfoPath = Join-Path $packageV2 'build-info.json'
-    $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
-    $buildInfo.version = '0.8.1'
-    $buildInfo.plugin.version = '0.8.1'
-    [System.IO.File]::WriteAllText($buildInfoPath, (($buildInfo | ConvertTo-Json -Depth 20) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
-
-    Write-PackageChecksums $packageV2
-
+    Set-PackageVersion $packageV2 '0.8.1'
     $updated = & $installer -PackageRoot $packageV2 -Vst3Directory $target -BackupRoot $backups -Confirm:$false
     Assert ($updated.status -eq 'installed') 'Update did not complete.'
     Assert ([string]$updated.version -eq '0.8.1') 'Updated version is incorrect.'
@@ -133,7 +119,7 @@ try {
 
     $badPathPackage = Join-Path $testRoot 'bad-path-package'
     Copy-Package $packageV1 $badPathPackage
-    Add-Content -LiteralPath (Join-Path $badPathPackage 'SHA256SUMS.txt') -Value ((('0' * 64) + '  ../escape.txt'))
+    Add-Content -LiteralPath (Join-Path $badPathPackage 'SHA256SUMS.txt') -Value (('0' * 64) + '  ../escape.txt')
     $badPathTarget = Join-Path $testRoot 'BadPathTarget'
     Invoke-ExpectedFailure {
         & $installer -PackageRoot $badPathPackage -Vst3Directory $badPathTarget -BackupRoot (Join-Path $testRoot 'BadPathBackups') -Confirm:$false
@@ -154,51 +140,9 @@ try {
     $nonFinitePackage = Join-Path $testRoot 'non-finite-package'
     Copy-Package $packageV1 $nonFinitePackage
     $nonFinitePath = Join-Path $nonFinitePackage 'build-info.json'
-    $nonFiniteRaw = Get-Content -LiteralPath $nonFinitePath -Raw
-    $nonFiniteRaw = $nonFiniteRaw.TrimEnd() -replace '\\}
-    Copy-Package $originalBackup $badBackup
-    $badBackupModule = Join-Path $badBackup 'SkellCast.vst3\Contents\x86_64-win\SkellCast.vst3'
-    [System.IO.File]::AppendAllText($badBackupModule, 'tamper')
-    $badRollbackTarget = Join-Path $testRoot 'BadRollbackTarget'
-    Invoke-ExpectedFailure {
-        & $installer -RollbackFrom $badBackup -Vst3Directory $badRollbackTarget -BackupRoot (Join-Path $testRoot 'BadRollbackBackups') -Confirm:$false
-    } 'Rollback accepted a tampered backup.'
-    Assert (-not (Test-Path -LiteralPath $badRollbackTarget)) 'Tampered backup created a rollback target.'
-
-    $invalidTargetRoot = Join-Path $testRoot 'InvalidExistingTarget'
-    New-Item -ItemType Directory -Path $invalidTargetRoot | Out-Null
-    $invalidTarget = Join-Path $invalidTargetRoot 'SkellCast.vst3'
-    [System.IO.File]::WriteAllText($invalidTarget, 'preserve existing data')
-    Invoke-ExpectedFailure {
-        & $installer -PackageRoot $packageV1 -Vst3Directory $invalidTargetRoot -BackupRoot (Join-Path $testRoot 'InvalidTargetBackups') -Confirm:$false
-    } 'Installer overwrote an invalid pre-existing target.'
-    Assert ((Get-Content -LiteralPath $invalidTarget -Raw) -eq 'preserve existing data') 'Installer modified an invalid pre-existing target.'
-
-    $script:passed = $true
-    Write-Host "SkellCast install/update/rollback tests: $script:assertions assertions passed."
-}
-finally {
-    if ($script:passed -and (Test-Path -LiteralPath $testRoot -PathType Container)) {
-        $rootItem = Get-Item -LiteralPath $testRoot -Force
-        $markerItem = if (Test-Path -LiteralPath $marker -PathType Leaf) { Get-Item -LiteralPath $marker -Force } else { $null }
-        $nested = @(Get-ChildItem -LiteralPath $testRoot -Recurse -Force -ErrorAction Stop |
-            Where-Object { ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0 })
-        if (($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0 -and
-            $null -ne $markerItem -and
-            ($markerItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0 -and
-            ([System.IO.File]::ReadAllText($marker) -ceq $token) -and
-            $nested.Count -eq 0) {
-            Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction Stop
-        }
-        else {
-            Write-Warning "Test root ownership could not be verified; preserving it at $testRoot"
-        }
-    }
-    elseif (-not $script:passed) {
-        Write-Warning "Tests failed; preserving the owned test directory for diagnosis: $testRoot"
-    }
-}
-, ',"test_number":NaN}'
+    $nonFiniteRaw = (Get-Content -LiteralPath $nonFinitePath -Raw).TrimEnd()
+    if (-not $nonFiniteRaw.EndsWith('}')) { throw 'Test fixture build-info.json is not a JSON object.' }
+    $nonFiniteRaw = $nonFiniteRaw.Substring(0, $nonFiniteRaw.Length - 1) + ',"test_number":NaN}' + [Environment]::NewLine
     [System.IO.File]::WriteAllText($nonFinitePath, $nonFiniteRaw, [System.Text.UTF8Encoding]::new($false))
     Write-PackageChecksums $nonFinitePackage
     $nonFiniteTarget = Join-Path $testRoot 'NonFiniteTarget'
@@ -206,6 +150,19 @@ finally {
         & $installer -PackageRoot $nonFinitePackage -Vst3Directory $nonFiniteTarget -BackupRoot (Join-Path $testRoot 'NonFiniteBackups') -Confirm:$false
     } 'Installer accepted a non-finite JSON number.'
     Assert (-not (Test-Path -LiteralPath $nonFiniteTarget)) 'Non-finite JSON package created an installation target.'
+
+    $badCategoryPackage = Join-Path $testRoot 'bad-category-package'
+    Copy-Package $packageV1 $badCategoryPackage
+    $categoryPath = Join-Path $badCategoryPackage 'SkellCast.vst3\Contents\Resources\moduleinfo.json'
+    $categoryJson = Get-Content -LiteralPath $categoryPath -Raw | ConvertFrom-Json
+    $categoryJson.Classes[0].Category = @('Audio Module Class')
+    [System.IO.File]::WriteAllText($categoryPath, (($categoryJson | ConvertTo-Json -Depth 20) + [Environment]::NewLine), [System.Text.UTF8Encoding]::new($false))
+    Write-PackageChecksums $badCategoryPackage
+    $badCategoryTarget = Join-Path $testRoot 'BadCategoryTarget'
+    Invoke-ExpectedFailure {
+        & $installer -PackageRoot $badCategoryPackage -Vst3Directory $badCategoryTarget -BackupRoot (Join-Path $testRoot 'BadCategoryBackups') -Confirm:$false
+    } 'Installer accepted a non-string VST3 class Category.'
+    Assert (-not (Test-Path -LiteralPath $badCategoryTarget)) 'Invalid moduleinfo created an installation target.'
 
     $badBackup = Join-Path $testRoot 'bad-backup'
     Copy-Package $originalBackup $badBackup
