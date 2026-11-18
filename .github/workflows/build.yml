@@ -82,7 +82,7 @@ jobs:
         run: |
           $testRoot = Join-Path $env:RUNNER_TEMP ("SkellCast-Installer-Test-" + $env:GITHUB_RUN_ID)
           & ./scripts/Test-Install-SkellCast.ps1 -PackageRoot ./out/SkellCast-VST3-Windows-x64 -InstallerPath ./scripts/Install-SkellCast.ps1 -TestRoot $testRoot
-          if ($LASTEXITCODE -ne 0) { throw 'SkellCast install/update/rollback integration tests failed' }
+          if (-not $?) { throw 'SkellCast install/update/rollback integration tests failed' }
 
       - name: Validate SkellCast with pluginval strictness 5
         uses: Tracktion/pluginval/validate@v2.0.0-beta3
