@@ -152,7 +152,7 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
     bundle = package_dir / f"{NAME}.vst3"
     shutil.copytree(bundles[0], bundle)
     plugin = validate_bundle(bundle)
-    for filename in ("README.md", "TESTING.md"):
+    for filename in ("README.md", "TESTING.md", "CHANGELOG.md"):
         source = repo_root / filename
         if not source.is_file():
             raise PackageValidationError(f"required package document missing: {filename}")
