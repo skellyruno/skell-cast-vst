@@ -92,4 +92,37 @@ CPU usage is **not zero**. Stereo samples are copied into a bounded lock-free qu
 
 The Windows package step requires Python 3.12+ (standard library only) in addition to the existing Visual Studio, CMake, Git and JUCE prerequisites. It validates the single x64 VST3 bundle, normalizes JUCE's trailing-comma `moduleinfo.json` only in the staged copy, records build provenance, and writes `SHA256SUMS.txt`. The CI job also runs the package regression suite and pluginval strictness 5.
 
-The resulting artifact is explicitly preview-only. Vendor URL/support email, third-party licensing, FL Studio/OBS/WASAPI acceptance, the global per-user audio-sharing opt-in wording, signing, installer, updater and rollback still require separate owner/engineering acceptance. The current source default is OFF. Do not distribute it as a commercial release.
+The resulting artifact is explicitly preview-only. Vendor URL/support email, third-party licensing, FL Studio/OBS/WASAPI acceptance, the global per-user audio-sharing opt-in wording, code signing and owner-side install/update/rollback acceptance still require separate approval. The current source default is OFF. Do not distribute it as a commercial release.
+
+
+## Private Windows preview install / update / rollback
+
+The verified preview package includes `Install-SkellCast.ps1` and `CHANGELOG.md`. Use PowerShell 7 or later. Extract the GitHub Actions artifact to a folder, open PowerShell in that folder, and inspect the operation first:
+
+```powershell
+pwsh -File .\Install-SkellCast.ps1 -PackageRoot . -WhatIf
+```
+
+If the preview, version and destination are correct, install or update:
+
+```powershell
+pwsh -File .\Install-SkellCast.ps1 -PackageRoot .
+```
+
+The default destination is per-user:
+
+`%LOCALAPPDATA%\Programs\Common\VST3\SkellCast.vst3`
+
+The installer verifies the package SHA-256 manifest, build provenance, module metadata, two unique VST3 class IDs, AMD64 PE32+ module and bundle structure before it writes anything. On update it creates and re-verifies a timestamped backup under:
+
+`%LOCALAPPDATA%\Skell\Backups\SkellCast`
+
+The command output reports the exact backup directory. To restore it, use:
+
+```powershell
+pwsh -File .\Install-SkellCast.ps1 -RollbackFrom "$env:LOCALAPPDATA\Skell\Backups\SkellCast\BACKUP-DIRECTORY"
+```
+
+The default install is per-user and does not require administrator elevation. A different `-Vst3Directory` can be supplied explicitly when needed; machine-wide installation is never the default. The helper changes only the VST3 bundle: it does not change global audio-sharing preferences, registry entries, FL Studio projects, presets or host state. Audio sharing remains OFF by default.
+
+This is an unsigned private-preview helper, not a commercial installer. Keep a backup of important FL Studio projects and confirm the device-routing behavior in FL Studio/OBS before relying on it.

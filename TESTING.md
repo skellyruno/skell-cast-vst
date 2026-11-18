@@ -85,4 +85,19 @@ ctest --test-dir build-core --output-on-failure
 - JUCE and third-party license notices need review and packaging.
 - FL Studio project recall, OBS/WASAPI routing and real pass-through A/B remain manual tests.
 - The global per-user audio-sharing toggle must remain opt-in (OFF by default) and its ON behavior must be clearly explained; this packaging change does not alter it.
-- Signed installer, updater, backup/rollback, target-hardware CPU/latency and long-session tests remain open.
+- Code signing and owner-side install/update/rollback acceptance, target-hardware CPU/latency and long-session tests remain open.
+
+
+## Private-preview installer / rollback gate
+
+- [ ] Run `scripts/Test-Install-SkellCast.ps1` against the staged Windows package before pluginval/artifact upload.
+- [ ] Verify `Install-SkellCast.ps1` is included in the package and covered by SHA256SUMS.
+- [ ] Confirm the default destination is per-user `%LOCALAPPDATA%\Programs\Common\VST3`, never machine-wide.
+- [ ] Confirm `-WhatIf` performs no writes.
+- [ ] Confirm fresh install and repeated idempotent install.
+- [ ] Confirm update creates a verified backup before replacement.
+- [ ] Confirm rollback restores the exact prior bundle and preserves a backup of the replaced version.
+- [ ] Confirm malformed/duplicate JSON, non-finite numbers, path traversal, checksum tampering and invalid existing targets fail closed before writes.
+- [ ] Confirm installer never changes global audio-sharing preferences, registry values, FL Studio projects, presets or host state.
+- [ ] Owner-side Windows install, FL Studio scan/load, CABLE/SPARE routing, project recall and rollback remain manual acceptance gates.
+- [ ] Code signing, license/attribution, vendor URL and support email remain owner approval gates.

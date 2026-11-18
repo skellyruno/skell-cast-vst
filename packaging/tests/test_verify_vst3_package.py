@@ -50,6 +50,10 @@ class PackageVerifierTests(unittest.TestCase):
         repo.mkdir()
         (repo / "README.md").write_text("# SkellCast\n", encoding="utf-8")
         (repo / "TESTING.md").write_text("# Tests\n", encoding="utf-8")
+        (repo / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+        scripts = repo / "scripts"
+        scripts.mkdir()
+        (scripts / "Install-SkellCast.ps1").write_text("# private preview installer fixture\n", encoding="utf-8")
         return repo, repo / "build"
 
     def test_trailing_commas_are_removed_outside_strings(self):
@@ -76,6 +80,8 @@ class PackageVerifierTests(unittest.TestCase):
             self.assertTrue((package / "build-info.json").is_file())
             self.assertTrue((package / "RELEASE-READINESS.json").is_file())
             self.assertTrue((package / "PREVIEW-ONLY.txt").is_file())
+            self.assertTrue((package / "Install-SkellCast.ps1").is_file())
+            self.assertTrue((package / "CHANGELOG.md").is_file())
             for line in (package / "SHA256SUMS.txt").read_text().splitlines():
                 digest, rel = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((package / rel).read_bytes()).hexdigest(), digest)
@@ -175,6 +181,31 @@ class PackageVerifierTests(unittest.TestCase):
         source = header.read_text(encoding="utf-8")
         self.assertRegex(source, r"std::atomic<bool>\s+send_\s*\{false\}")
         self.assertRegex(source, r"std::atomic<bool>\s+spare_\s*\{false\}")
+
+
+    def test_rejects_non_object_factory_info(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo, build = self.make_repo(root)
+            bundle = self.make_bundle(build)
+            metadata_path = bundle / "Contents/Resources/moduleinfo.json"
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
+            metadata["Factory Info"] = "not-an-object"
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(PackageValidationError, "Factory Info must be an object"):
+                stage_package(build, root / "package", repo)
+
+    def test_rejects_non_string_class_category(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo, build = self.make_repo(root)
+            bundle = self.make_bundle(build)
+            metadata_path = bundle / "Contents/Resources/moduleinfo.json"
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
+            metadata["Classes"][0]["Category"] = []
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(PackageValidationError, "invalid VST3 class category or CID"):
+                stage_package(build, root / "package", repo)
 
 
 if __name__ == "__main__":
