@@ -324,7 +324,8 @@ function Get-ValidatedPackage([string]$Root) {
     $readinessPath = Join-Path $rootFull 'RELEASE-READINESS.json'
     $previewPath = Join-Path $rootFull 'PREVIEW-ONLY.txt'
     $installerCopy = Join-Path $rootFull 'Install-SkellCast.ps1'
-    foreach ($required in @($buildInfoPath, $readinessPath, $previewPath, $installerCopy)) {
+    $changelogPath = Join-Path $rootFull 'CHANGELOG.md'
+    foreach ($required in @($buildInfoPath, $readinessPath, $previewPath, $installerCopy, $changelogPath)) {
         if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing release sidecar: $required" }
     }
 
