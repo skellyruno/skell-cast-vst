@@ -302,8 +302,7 @@ function Test-PackageChecksums([string]$Root) {
         Where-Object { -not [string]::Equals($_.FullName, $sumPath, [System.StringComparison]::OrdinalIgnoreCase) })
     $seen = @{}
     foreach ($file in $actualFiles) {
-        $relative = $file.FullName.Substring($rootFull.Length).
-            TrimStart([char[]]@([char]92, [char]47)).Replace([char]92, [char]47)
+        $relative = $file.FullName.Substring($rootFull.Length).TrimStart([char[]]@([char]92, [char]47)).Replace([char]92, [char]47)
         $key = $relative.ToLowerInvariant()
         if (-not $expected.ContainsKey($key)) { throw "File is missing from SHA256SUMS.txt: $relative" }
         if ((Get-FileSha256 $file.FullName) -ne $expected[$key]) { throw "Checksum mismatch: $relative" }
