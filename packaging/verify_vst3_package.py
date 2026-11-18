@@ -196,7 +196,7 @@ def stage_package(source_dir: Path, package_dir: Path, repo_root: Path) -> dict[
         "Not a commercial release and not a signed installer.\n"
         "Read README.md before use. AUDIO SHARING is a global per-user opt-in preference;\n"
         "the default is OFF. Confirm it remains OFF unless you explicitly intend to share.\n"
-        "Back up existing plugin installations and FL Studio projects before testing.\n",
+        "Back up existing plugin installations and FL Studio projects before testing. PowerShell 7+ helper Install-SkellCast.ps1 is included; run it with -WhatIf first.\n",
         encoding="utf-8", newline="\n")
     lines = []
     for path in sorted(p for p in package_dir.rglob("*") if p.is_file()):
