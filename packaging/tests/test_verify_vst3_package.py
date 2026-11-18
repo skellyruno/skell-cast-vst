@@ -50,6 +50,7 @@ class PackageVerifierTests(unittest.TestCase):
         repo.mkdir()
         (repo / "README.md").write_text("# SkellCast\n", encoding="utf-8")
         (repo / "TESTING.md").write_text("# Tests\n", encoding="utf-8")
+        (repo / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
         scripts = repo / "scripts"
         scripts.mkdir()
         (scripts / "Install-SkellCast.ps1").write_text("# private preview installer fixture\n", encoding="utf-8")
@@ -80,6 +81,7 @@ class PackageVerifierTests(unittest.TestCase):
             self.assertTrue((package / "RELEASE-READINESS.json").is_file())
             self.assertTrue((package / "PREVIEW-ONLY.txt").is_file())
             self.assertTrue((package / "Install-SkellCast.ps1").is_file())
+            self.assertTrue((package / "CHANGELOG.md").is_file())
             for line in (package / "SHA256SUMS.txt").read_text().splitlines():
                 digest, rel = line.split("  ", 1)
                 self.assertEqual(hashlib.sha256((package / rel).read_bytes()).hexdigest(), digest)
