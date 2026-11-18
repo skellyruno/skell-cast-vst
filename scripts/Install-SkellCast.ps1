@@ -194,10 +194,10 @@ function Get-BundleEvidence([string]$BundlePath) {
         throw "Expected $($script:BundleName): $bundle"
     }
     Assert-NoReparseTree $bundle
-    if (@(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter '*.exe').Count -gt 0) {
+    if (@(Get-ChildItem -LiteralPath $bundle -Recurse -Force -File -Filter '*.exe').Count -gt 0) {
         throw 'Standalone EXE files are not permitted in the VST3 bundle.'
     }
-    if (@(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter '*.zip').Count -gt 0) {
+    if (@(Get-ChildItem -LiteralPath $bundle -Recurse -Force -File -Filter '*.zip').Count -gt 0) {
         throw 'Nested ZIP files are not permitted in the VST3 bundle.'
     }
 
@@ -206,7 +206,7 @@ function Get-BundleEvidence([string]$BundlePath) {
     if (-not (Test-Path -LiteralPath $infoPath -PathType Leaf)) { throw 'VST3 moduleinfo.json is missing.' }
     if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) { throw 'Windows x64 VST3 module is missing.' }
 
-    $modules = @(Get-ChildItem -LiteralPath $bundle -Recurse -File -Filter '*.vst3')
+    $modules = @(Get-ChildItem -LiteralPath $bundle -Recurse -Force -File -Filter '*.vst3')
     if ($modules.Count -ne 1 -or
         -not [string]::Equals($modules[0].FullName, $binaryPath, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Expected exactly one module at $($script:ModuleRelative)."
@@ -275,7 +275,303 @@ function Test-PackageChecksums([string]$Root) {
     $expected = @{}
     foreach ($line in @(Get-Content -LiteralPath $sumPath -ErrorAction Stop)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        if ($line -notmatch '^([0-9a-fA-F]{64})  (.+)$') { throw "Malformed checksum entry: $line" }
+        if ($line -notmatch '^([0-9a-fA-F]{64})  (.+)
+        if ($relative.Contains('\') -or $relative.Contains(':') -or
+            [System.IO.Path]::IsPathRooted($relative) -or
+            $relative -match '(^|/)\.\.(/|$)' -or $relative.StartsWith('/')) {
+            throw "Unsafe checksum path: $relative"
+        }
+        $key = $relative.ToLowerInvariant()
+        if ($expected.ContainsKey($key)) { throw "Duplicate checksum path: $relative" }
+        $fullPath = [System.IO.Path]::GetFullPath((Join-Path $rootFull $relative.Replace('/', [System.IO.Path]::DirectorySeparatorChar)))
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Checksum path escapes package root: $relative"
+        }
+        $expected[$key] = $digest
+    }
+
+    $actualFiles = @(Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force -ErrorAction Stop |
+        Where-Object { -not [string]::Equals($_.FullName, $sumPath, [System.StringComparison]::OrdinalIgnoreCase) })
+    $seen = @{}
+    foreach ($file in $actualFiles) {
+        $relative = $file.FullName.Substring($rootFull.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+        $key = $relative.ToLowerInvariant()
+        if (-not $expected.ContainsKey($key)) { throw "File is missing from SHA256SUMS.txt: $relative" }
+        if ((Get-FileSha256 $file.FullName) -ne $expected[$key]) { throw "Checksum mismatch: $relative" }
+        $seen[$key] = $true
+    }
+    foreach ($key in $expected.Keys) {
+        if (-not $seen.ContainsKey($key)) { throw "Checksum references a missing file: $key" }
+    }
+}
+
+function Get-ValidatedPackage([string]$Root) {
+    $rootFull = Get-FullPath $Root
+    Assert-NoReparseTree $rootFull
+    $bundles = @(Get-ChildItem -LiteralPath $rootFull -Directory -Filter '*.vst3')
+    if ($bundles.Count -ne 1 -or $bundles[0].Name -ne $script:BundleName) {
+        throw "Expected exactly one top-level $($script:BundleName) bundle."
+    }
+    if (@(Get-ChildItem -LiteralPath $rootFull -Recurse -File -Filter '*.exe').Count -gt 0) {
+        throw 'Standalone EXE files are not permitted in this VST3 preview package.'
+    }
+    if (@(Get-ChildItem -LiteralPath $rootFull -Recurse -File -Filter '*.zip').Count -gt 0) {
+        throw 'Nested ZIP files are not permitted in this VST3 preview package.'
+    }
+    Test-PackageChecksums $rootFull
+
+    $buildInfoPath = Join-Path $rootFull 'build-info.json'
+    $readinessPath = Join-Path $rootFull 'RELEASE-READINESS.json'
+    $previewPath = Join-Path $rootFull 'PREVIEW-ONLY.txt'
+    $installerCopy = Join-Path $rootFull 'Install-SkellCast.ps1'
+    foreach ($required in @($buildInfoPath, $readinessPath, $previewPath, $installerCopy)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing release sidecar: $required" }
+    }
+
+    $buildInfo = ConvertFrom-StrictJson (Get-Content -LiteralPath $buildInfoPath -Raw -ErrorAction Stop) 'build-info.json'
+    $readiness = ConvertFrom-StrictJson (Get-Content -LiteralPath $readinessPath -Raw -ErrorAction Stop) 'RELEASE-READINESS.json'
+    $previewText = Get-Content -LiteralPath $previewPath -Raw -ErrorAction Stop
+    if (-not $previewText.Contains('Not a commercial release') -or
+        -not $previewText.Contains('default is OFF')) {
+        throw 'Package is missing the preview-only and audio-sharing opt-in warnings.'
+    }
+    if ($readiness.commercial_release -ne 'blocked_pending_owner_approval') {
+        throw 'Package readiness metadata does not block unapproved commercial release.'
+    }
+
+    $bundle = Join-Path $rootFull $script:BundleName
+    $evidence = Get-BundleEvidence $bundle
+    $plugin = $buildInfo.plugin
+    if ($buildInfo.product -ne $script:Product -or $buildInfo.vendor -ne $script:Vendor -or
+        $buildInfo.version -ne $evidence.version -or $buildInfo.format -ne 'VST3' -or
+        $buildInfo.platform -ne 'Windows x86_64' -or
+        ([string]$buildInfo.release_status -notmatch 'preview-only')) {
+        throw 'Build provenance does not identify the expected private Windows VST3 preview.'
+    }
+    if ($null -eq $plugin -or $plugin.name -ne $script:Product -or
+        $plugin.vendor -ne $script:Vendor -or $plugin.version -ne $evidence.version -or
+        $plugin.module -ne $script:BundleName -or
+        [int64]$plugin.module_bytes -ne $evidence.binary_size -or
+        $plugin.module_sha256 -ne $evidence.binary_sha256) {
+        throw 'Build-info plugin evidence does not match the VST3 bundle.'
+    }
+    $manifestIds = @($plugin.class_ids | ForEach-Object { ([string]$_).ToUpperInvariant() } | Sort-Object)
+    $classIdDifferences = @(Compare-Object -ReferenceObject @($evidence.class_ids) -DifferenceObject $manifestIds)
+    if ($classIdDifferences.Count -gt 0) {
+        throw 'Build-info class IDs do not match moduleinfo.json.'
+    }
+
+    [pscustomobject]@{ root = $rootFull; bundle = $bundle; evidence = $evidence }
+}
+
+function New-VerifiedBackup([string]$BundlePath, [string]$Reason, [string]$Target) {
+    Assert-NoReparsePathChain $BackupRoot
+    New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
+    $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
+    $token = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $backupPath = Join-Path $BackupRoot ('SkellCast-' + $stamp + '-' + $token)
+    New-Item -ItemType Directory -Path $backupPath -ErrorAction Stop | Out-Null
+    $backupBundle = Join-Path $backupPath $script:BundleName
+    $before = Get-BundleEvidence $BundlePath
+    Copy-Item -LiteralPath $BundlePath -Destination $backupBundle -Recurse -ErrorAction Stop
+    $after = Get-BundleEvidence $backupBundle
+    if ($after.tree_sha256 -ne $before.tree_sha256) {
+        throw "Backup verification failed; original installation was not changed. Backup retained at $backupPath"
+    }
+    $manifest = [ordered]@{
+        schema_version = 1
+        product = $script:Product
+        created_utc = [DateTime]::UtcNow.ToString('o')
+        version = $after.version
+        binary_sha256 = $after.binary_sha256
+        bundle_tree_sha256 = $after.tree_sha256
+        original_target = $Target
+        reason = $Reason
+    }
+    $json = $manifest | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText((Join-Path $backupPath 'backup-manifest.json'),
+        $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    $backupPath
+}
+
+function Get-ValidatedBackup([string]$BackupPath) {
+    $root = Get-FullPath $BackupPath
+    Assert-NoReparseTree $root
+    $manifestPath = Join-Path $root 'backup-manifest.json'
+    $bundlePath = Join-Path $root $script:BundleName
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'Backup manifest is missing.' }
+    $bundles = @(Get-ChildItem -LiteralPath $root -Directory -Filter '*.vst3')
+    $entries = @(Get-ChildItem -LiteralPath $root -Force)
+    if ($bundles.Count -ne 1 -or $bundles[0].Name -ne $script:BundleName -or $entries.Count -ne 2 -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw 'Backup must contain exactly one SkellCast VST3 bundle and one backup manifest.'
+    }
+    $manifest = ConvertFrom-StrictJson (Get-Content -LiteralPath $manifestPath -Raw) 'backup-manifest.json'
+    $evidence = Get-BundleEvidence $bundlePath
+    if ($manifest.schema_version -ne 1 -or $manifest.product -ne $script:Product -or
+        $manifest.version -ne $evidence.version -or
+        $manifest.binary_sha256 -ne $evidence.binary_sha256 -or
+        $manifest.bundle_tree_sha256 -ne $evidence.tree_sha256) {
+        throw 'Backup manifest does not match the backup bundle.'
+    }
+    [pscustomobject]@{ root = $root; bundle = $bundlePath; evidence = $evidence }
+}
+
+function Invoke-Install([System.Management.Automation.PSCmdlet]$Cmdlet) {
+    $package = Get-ValidatedPackage $PackageRoot
+    $targetRoot = Get-FullPath $Vst3Directory
+    Assert-NoReparsePathChain $targetRoot
+    $target = Join-Path $targetRoot $script:BundleName
+    $current = $null
+    if (Test-Path -LiteralPath $target) {
+        $targetItem = Get-Item -LiteralPath $target -Force
+        if (-not $targetItem.PSIsContainer) { throw "Refusing to overwrite a non-directory target: $target" }
+        $current = Get-BundleEvidence $target
+        if ($current.tree_sha256 -eq $package.evidence.tree_sha256) {
+            return [pscustomobject]@{ status = 'already-installed'; version = $current.version; target = $target; backup_path = $null; binary_sha256 = $current.binary_sha256 }
+        }
+    }
+    if (-not $Cmdlet.ShouldProcess($target, ('Install private SkellCast VST3 ' + $package.evidence.version))) {
+        return [pscustomobject]@{ status = 'what-if'; version = $package.evidence.version; target = $target; backup_path = $null; binary_sha256 = $package.evidence.binary_sha256 }
+    }
+
+    New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
+    $backupPath = $null
+    if ($null -ne $current) {
+        $backupPath = New-VerifiedBackup $target 'pre-install-or-update' $target
+    }
+    $token = [Guid]::NewGuid().ToString('N')
+    $stageRoot = Join-Path $targetRoot ('.SkellCast-stage-' + $token)
+    $displaced = Join-Path $targetRoot ('.SkellCast-previous-' + $token)
+    $targetMoved = $false
+    $newTargetMoved = $false
+    try {
+        New-Item -ItemType Directory -Path $stageRoot -ErrorAction Stop | Out-Null
+        Copy-Item -LiteralPath $package.bundle -Destination $stageRoot -Recurse -ErrorAction Stop
+        $stagedBundle = Join-Path $stageRoot $script:BundleName
+        $staged = Get-BundleEvidence $stagedBundle
+        if ($staged.tree_sha256 -ne $package.evidence.tree_sha256) { throw 'Staged VST3 differs from the verified package.' }
+        if ($null -ne $current) {
+            Move-Item -LiteralPath $target -Destination $displaced -ErrorAction Stop
+            $targetMoved = $true
+        }
+        Move-Item -LiteralPath $stagedBundle -Destination $target -ErrorAction Stop
+        $newTargetMoved = $true
+        $installed = Get-BundleEvidence $target
+        if ($installed.tree_sha256 -ne $package.evidence.tree_sha256) { throw 'Installed VST3 failed post-install verification.' }
+        if ($targetMoved -and (Test-Path -LiteralPath $displaced)) {
+            try { Remove-Item -LiteralPath $displaced -Recurse -Force -ErrorAction Stop }
+            catch { Write-Warning "Verified persistent backup exists; temporary displaced bundle was retained at $displaced" }
+        }
+    }
+    catch {
+        if ($newTargetMoved -and (Test-Path -LiteralPath $target)) {
+            $failed = Join-Path $targetRoot ('.SkellCast-install-failed-' + $token)
+            try { Move-Item -LiteralPath $target -Destination $failed -ErrorAction Stop }
+            catch { Write-Warning "Could not move failed candidate aside: $target" }
+        }
+        if ($targetMoved -and (Test-Path -LiteralPath $displaced) -and -not (Test-Path -LiteralPath $target)) {
+            try { Move-Item -LiteralPath $displaced -Destination $target -ErrorAction Stop }
+            catch { Write-Warning "CRITICAL: automatic restoration failed; previous bundle remains at $displaced" }
+        }
+        throw
+    }
+    finally {
+        if (Test-Path -LiteralPath $stageRoot) {
+            try {
+                $stageItem = Get-Item -LiteralPath $stageRoot -Force
+                if (($stageItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+                    Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction Stop
+                }
+            }
+            catch { Write-Warning "Temporary staging directory was retained: $stageRoot" }
+        }
+    }
+    [pscustomobject]@{ status = 'installed'; version = $installed.version; target = $target; backup_path = $backupPath; binary_sha256 = $installed.binary_sha256 }
+}
+
+function Invoke-Rollback([System.Management.Automation.PSCmdlet]$Cmdlet) {
+    $backup = Get-ValidatedBackup $RollbackFrom
+    $targetRoot = Get-FullPath $Vst3Directory
+    Assert-NoReparsePathChain $targetRoot
+    $target = Join-Path $targetRoot $script:BundleName
+    $current = $null
+    if (Test-Path -LiteralPath $target) {
+        $targetItem = Get-Item -LiteralPath $target -Force
+        if (-not $targetItem.PSIsContainer) { throw "Refusing to overwrite a non-directory target: $target" }
+        $current = Get-BundleEvidence $target
+        if ($current.tree_sha256 -eq $backup.evidence.tree_sha256) {
+            return [pscustomobject]@{ status = 'already-restored'; version = $current.version; target = $target; backup_path = $null; binary_sha256 = $current.binary_sha256 }
+        }
+    }
+    if (-not $Cmdlet.ShouldProcess($target, ('Restore private SkellCast VST3 ' + $backup.evidence.version))) {
+        return [pscustomobject]@{ status = 'what-if'; version = $backup.evidence.version; target = $target; backup_path = $null; binary_sha256 = $backup.evidence.binary_sha256 }
+    }
+
+    New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
+    $currentBackup = $null
+    if ($null -ne $current) {
+        $currentBackup = New-VerifiedBackup $target 'pre-rollback' $target
+    }
+    $token = [Guid]::NewGuid().ToString('N')
+    $stageRoot = Join-Path $targetRoot ('.SkellCast-rollback-stage-' + $token)
+    $displaced = Join-Path $targetRoot ('.SkellCast-rollback-previous-' + $token)
+    $targetMoved = $false
+    $newTargetMoved = $false
+    try {
+        New-Item -ItemType Directory -Path $stageRoot -ErrorAction Stop | Out-Null
+        Copy-Item -LiteralPath $backup.bundle -Destination $stageRoot -Recurse -ErrorAction Stop
+        $stagedBundle = Join-Path $stageRoot $script:BundleName
+        $staged = Get-BundleEvidence $stagedBundle
+        if ($staged.tree_sha256 -ne $backup.evidence.tree_sha256) { throw 'Staged rollback bundle differs from verified backup.' }
+        if ($null -ne $current) {
+            Move-Item -LiteralPath $target -Destination $displaced -ErrorAction Stop
+            $targetMoved = $true
+        }
+        Move-Item -LiteralPath $stagedBundle -Destination $target -ErrorAction Stop
+        $newTargetMoved = $true
+        $restored = Get-BundleEvidence $target
+        if ($restored.tree_sha256 -ne $backup.evidence.tree_sha256) { throw 'Restored VST3 failed post-rollback verification.' }
+        if ($targetMoved -and (Test-Path -LiteralPath $displaced)) {
+            try { Remove-Item -LiteralPath $displaced -Recurse -Force -ErrorAction Stop }
+            catch { Write-Warning "Verified pre-rollback backup exists; temporary displaced bundle was retained at $displaced" }
+        }
+    }
+    catch {
+        if ($newTargetMoved -and (Test-Path -LiteralPath $target)) {
+            $failed = Join-Path $targetRoot ('.SkellCast-rollback-failed-' + $token)
+            try { Move-Item -LiteralPath $target -Destination $failed -ErrorAction Stop }
+            catch { Write-Warning "Could not move failed rollback candidate aside: $target" }
+        }
+        if ($targetMoved -and (Test-Path -LiteralPath $displaced) -and -not (Test-Path -LiteralPath $target)) {
+            try { Move-Item -LiteralPath $displaced -Destination $target -ErrorAction Stop }
+            catch { Write-Warning "CRITICAL: automatic restoration failed; previous bundle remains at $displaced" }
+        }
+        throw
+    }
+    finally {
+        if (Test-Path -LiteralPath $stageRoot) {
+            try {
+                $stageItem = Get-Item -LiteralPath $stageRoot -Force
+                if (($stageItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) {
+                    Remove-Item -LiteralPath $stageRoot -Recurse -Force -ErrorAction Stop
+                }
+            }
+            catch { Write-Warning "Temporary rollback staging directory was retained: $stageRoot" }
+        }
+    }
+    [pscustomobject]@{ status = 'rolled-back'; version = $restored.version; target = $target; backup_path = $currentBackup; binary_sha256 = $restored.binary_sha256 }
+}
+
+if ($env:OS -ne 'Windows_NT') { throw 'SkellCast VST3 installation is supported only on Windows.' }
+if ($PSCmdlet.ParameterSetName -eq 'Install') {
+    Invoke-Install $PSCmdlet
+}
+else {
+    Invoke-Rollback $PSCmdlet
+}
+) { throw "Malformed checksum entry: $line" }
+        $digest = $Matches[1].ToLowerInvariant()
         $relative = $Matches[2]
         if ($relative.Contains('\') -or $relative.Contains(':') -or
             [System.IO.Path]::IsPathRooted($relative) -or
