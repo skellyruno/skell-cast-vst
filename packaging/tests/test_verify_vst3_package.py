@@ -177,5 +177,30 @@ class PackageVerifierTests(unittest.TestCase):
         self.assertRegex(source, r"std::atomic<bool>\s+spare_\s*\{false\}")
 
 
+    def test_rejects_non_object_factory_info(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo, build = self.make_repo(root)
+            bundle = self.make_bundle(build)
+            metadata_path = bundle / "Contents/Resources/moduleinfo.json"
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
+            metadata["Factory Info"] = "not-an-object"
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(PackageValidationError, "Factory Info must be an object"):
+                stage_package(build, root / "package", repo)
+
+    def test_rejects_non_string_class_category(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            repo, build = self.make_repo(root)
+            bundle = self.make_bundle(build)
+            metadata_path = bundle / "Contents/Resources/moduleinfo.json"
+            metadata = json.loads(remove_trailing_commas(metadata_path.read_text(encoding="utf-8")))
+            metadata["Classes"][0]["Category"] = []
+            metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+            with self.assertRaisesRegex(PackageValidationError, "invalid VST3 class category or CID"):
+                stage_package(build, root / "package", repo)
+
+
 if __name__ == "__main__":
     unittest.main()
