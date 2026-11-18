@@ -97,7 +97,7 @@ The resulting artifact is explicitly preview-only. Vendor URL/support email, thi
 
 ## Private Windows preview install / update / rollback
 
-The verified preview package includes `Install-SkellCast.ps1`. Use PowerShell 7 or later. Extract the GitHub Actions artifact to a folder, open PowerShell in that folder, and inspect the operation first:
+The verified preview package includes `Install-SkellCast.ps1` and `CHANGELOG.md`. Use PowerShell 7 or later. Extract the GitHub Actions artifact to a folder, open PowerShell in that folder, and inspect the operation first:
 
 ```powershell
 pwsh -File .\Install-SkellCast.ps1 -PackageRoot . -WhatIf
