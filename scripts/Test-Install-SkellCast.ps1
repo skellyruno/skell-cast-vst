@@ -38,6 +38,15 @@ function Invoke-ExpectedFailure([scriptblock]$Action, [string]$Message) {
 function Copy-Package([string]$Source, [string]$Destination) {
     Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -ErrorAction Stop
 }
+function New-TestJunction([string]$LinkPath, [string]$TargetPath) {
+    New-Item -ItemType Directory -Path $TargetPath -Force | Out-Null
+    New-Item -ItemType Junction -Path $LinkPath -Target $TargetPath -ErrorAction Stop | Out-Null
+    $link = Get-Item -LiteralPath $LinkPath -Force
+    Assert (($link.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) "Test junction was not created: $LinkPath"
+}
+function Remove-TestJunction([string]$LinkPath) {
+    Remove-Item -LiteralPath $LinkPath -Force -ErrorAction Stop
+}
 function Set-PackageVersion([string]$Root, [string]$Version) {
     $moduleInfoPath = Join-Path $Root 'SkellCast.vst3\Contents\Resources\moduleinfo.json'
     $moduleInfo = Get-Content -LiteralPath $moduleInfoPath -Raw | ConvertFrom-Json
@@ -182,6 +191,55 @@ try {
         & $installer -PackageRoot $packageV1 -Vst3Directory $invalidTargetRoot -BackupRoot (Join-Path $testRoot 'InvalidTargetBackups') -Confirm:$false
     } 'Installer overwrote an invalid pre-existing target.'
     Assert ((Get-Content -LiteralPath $invalidTarget -Raw) -eq 'preserve existing data') 'Installer modified an invalid pre-existing target.'
+
+    # A junction anywhere inside a package must fail before the installer writes a destination.
+    $reparsePackage = Join-Path $testRoot 'reparse-package'
+    Copy-Package $packageV1 $reparsePackage
+    $packageJunction = Join-Path $reparsePackage 'external'
+    New-TestJunction $packageJunction (Join-Path $testRoot 'outside-package')
+    $reparsePackageTarget = Join-Path $testRoot 'ReparsePackageTarget'
+    Invoke-ExpectedFailure {
+        & $installer -PackageRoot $reparsePackage -Vst3Directory $reparsePackageTarget -BackupRoot (Join-Path $testRoot 'ReparsePackageBackups') -Confirm:$false
+    } 'Installer accepted a package tree containing a junction.'
+    Assert (-not (Test-Path -LiteralPath $reparsePackageTarget)) 'Reparse-point package created an installation target.'
+    Remove-TestJunction $packageJunction
+
+    # Rollback must reject a backup tree containing a junction before touching the destination.
+    $reparseBackup = Join-Path $testRoot 'reparse-backup'
+    Copy-Package $originalBackup $reparseBackup
+    $backupJunction = Join-Path $reparseBackup 'external'
+    New-TestJunction $backupJunction (Join-Path $testRoot 'outside-backup')
+    $reparseBackupTarget = Join-Path $testRoot 'ReparseBackupTarget'
+    Invoke-ExpectedFailure {
+        & $installer -RollbackFrom $reparseBackup -Vst3Directory $reparseBackupTarget -BackupRoot (Join-Path $testRoot 'ReparseRollbackBackups') -Confirm:$false
+    } 'Rollback accepted a backup tree containing a junction.'
+    Assert (-not (Test-Path -LiteralPath $reparseBackupTarget)) 'Reparse-point backup created a rollback target.'
+    Remove-TestJunction $backupJunction
+
+    # A redirected VST3 destination root must not receive an installation.
+    $outsideVst3 = Join-Path $testRoot 'outside-vst3'
+    New-Item -ItemType Directory -Path $outsideVst3 -Force | Out-Null
+    $redirectedVst3 = Join-Path $testRoot 'redirected-vst3'
+    New-TestJunction $redirectedVst3 $outsideVst3
+    Invoke-ExpectedFailure {
+        & $installer -PackageRoot $packageV1 -Vst3Directory $redirectedVst3 -BackupRoot (Join-Path $testRoot 'RedirectedBackups') -Confirm:$false
+    } 'Installer accepted a junction as the VST3 destination root.'
+    Assert (-not (Test-Path -LiteralPath (Join-Path $outsideVst3 'SkellCast.vst3'))) 'Installer wrote through a redirected destination root.'
+    Remove-TestJunction $redirectedVst3
+
+    # A redirected backup root must not receive a backup or allow an update to proceed.
+    $backupRootTarget = Join-Path $testRoot 'outside-backup-root'
+    New-Item -ItemType Directory -Path $backupRootTarget -Force | Out-Null
+    $redirectedBackupRoot = Join-Path $testRoot 'redirected-backup-root'
+    New-TestJunction $redirectedBackupRoot $backupRootTarget
+    $installedModule = Join-Path $target 'SkellCast.vst3\\Contents\\x86_64-win\\SkellCast.vst3'
+    $moduleBeforeBackupGuard = Get-Hash $installedModule
+    Invoke-ExpectedFailure {
+        & $installer -PackageRoot $packageV2 -Vst3Directory $target -BackupRoot $redirectedBackupRoot -Confirm:$false
+    } 'Installer accepted a junction as the backup root during update.'
+    Assert ((Get-Hash $installedModule) -eq $moduleBeforeBackupGuard) 'Rejected backup-root junction changed the installed module.'
+    Assert (-not (Test-Path -LiteralPath (Join-Path $backupRootTarget 'SkellCast'))) 'Installer wrote backups through a redirected backup root.'
+    Remove-TestJunction $redirectedBackupRoot
 
     $script:passed = $true
     Write-Host "SkellCast install/update/rollback tests: $script:assertions assertions passed."

@@ -375,10 +375,13 @@ function Get-ValidatedPackage([string]$Root) {
 function New-VerifiedBackup([string]$BundlePath, [string]$Reason, [string]$Target) {
     Assert-NoReparsePathChain $BackupRoot
     New-Item -ItemType Directory -Path $BackupRoot -Force | Out-Null
+    # Re-check after creation: do not trust a path that changed while the root was made.
+    Assert-NoReparsePathChain $BackupRoot
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
     $token = [Guid]::NewGuid().ToString('N').Substring(0, 8)
     $backupPath = Join-Path $BackupRoot ('SkellCast-' + $stamp + '-' + $token)
     New-Item -ItemType Directory -Path $backupPath -ErrorAction Stop | Out-Null
+    Assert-NoReparsePathChain $backupPath
     $backupBundle = Join-Path $backupPath $script:BundleName
     $before = Get-BundleEvidence $BundlePath
     Copy-Item -LiteralPath $BundlePath -Destination $backupBundle -Recurse -ErrorAction Stop
@@ -440,6 +443,8 @@ function Invoke-Install([System.Management.Automation.PSCmdlet]$Cmdlet) {
     }
 
     New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
+    # Re-check the complete destination chain after creating missing directories.
+    Assert-NoReparsePathChain $targetRoot
     $backupPath = $null
     if ($null -ne $current) {
         $backupPath = New-VerifiedBackup $target 'pre-install-or-update' $target
@@ -451,14 +456,20 @@ function Invoke-Install([System.Management.Automation.PSCmdlet]$Cmdlet) {
     $newTargetMoved = $false
     try {
         New-Item -ItemType Directory -Path $stageRoot -ErrorAction Stop | Out-Null
+        Assert-NoReparsePathChain $stageRoot
         Copy-Item -LiteralPath $package.bundle -Destination $stageRoot -Recurse -ErrorAction Stop
         $stagedBundle = Join-Path $stageRoot $script:BundleName
         $staged = Get-BundleEvidence $stagedBundle
         if ($staged.tree_sha256 -ne $package.evidence.tree_sha256) { throw 'Staged VST3 differs from the verified package.' }
+        # Re-check both sides immediately before the directory swaps.
+        Assert-NoReparsePathChain $targetRoot
+        Assert-NoReparsePathChain $stagedBundle
         if ($null -ne $current) {
+            Assert-NoReparsePathChain $target
             Move-Item -LiteralPath $target -Destination $displaced -ErrorAction Stop
             $targetMoved = $true
         }
+        Assert-NoReparsePathChain $targetRoot
         Move-Item -LiteralPath $stagedBundle -Destination $target -ErrorAction Stop
         $newTargetMoved = $true
         $installed = Get-BundleEvidence $target
@@ -513,6 +524,7 @@ function Invoke-Rollback([System.Management.Automation.PSCmdlet]$Cmdlet) {
     }
 
     New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
+    Assert-NoReparsePathChain $targetRoot
     $currentBackup = $null
     if ($null -ne $current) {
         $currentBackup = New-VerifiedBackup $target 'pre-rollback' $target
@@ -524,14 +536,19 @@ function Invoke-Rollback([System.Management.Automation.PSCmdlet]$Cmdlet) {
     $newTargetMoved = $false
     try {
         New-Item -ItemType Directory -Path $stageRoot -ErrorAction Stop | Out-Null
+        Assert-NoReparsePathChain $stageRoot
         Copy-Item -LiteralPath $backup.bundle -Destination $stageRoot -Recurse -ErrorAction Stop
         $stagedBundle = Join-Path $stageRoot $script:BundleName
         $staged = Get-BundleEvidence $stagedBundle
         if ($staged.tree_sha256 -ne $backup.evidence.tree_sha256) { throw 'Staged rollback bundle differs from verified backup.' }
+        Assert-NoReparsePathChain $targetRoot
+        Assert-NoReparsePathChain $stagedBundle
         if ($null -ne $current) {
+            Assert-NoReparsePathChain $target
             Move-Item -LiteralPath $target -Destination $displaced -ErrorAction Stop
             $targetMoved = $true
         }
+        Assert-NoReparsePathChain $targetRoot
         Move-Item -LiteralPath $stagedBundle -Destination $target -ErrorAction Stop
         $newTargetMoved = $true
         $restored = Get-BundleEvidence $target
