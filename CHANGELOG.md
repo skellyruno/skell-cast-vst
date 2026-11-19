@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0-preview — 2026-11-19
+
+- Re-check destination, backup and staging path chains after directory creation and immediately before install/rollback directory swaps.
+- Extend Windows installer integration tests to reject junctions in package and backup trees and at VST3/backup roots.
+- Update checkout, setup-python and upload-artifact to Node 24-compatible major versions, removing the runner's Node 20 action deprecation warning.
+- Preserve the existing VST3 bundle, global audio-sharing OFF default, parameter IDs, automation IDs and saved host state.
+
 ## 0.8.0-preview — 2026-11-18
 
 - Added a PowerShell 7+ private-preview Windows installer for the single x64 VST3 bundle.
