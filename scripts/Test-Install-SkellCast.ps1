@@ -232,13 +232,13 @@ try {
     New-Item -ItemType Directory -Path $backupRootTarget -Force | Out-Null
     $redirectedBackupRoot = Join-Path $testRoot 'redirected-backup-root'
     New-TestJunction $redirectedBackupRoot $backupRootTarget
-    $installedModule = Join-Path $target 'SkellCast.vst3\\Contents\\x86_64-win\\SkellCast.vst3'
+    $installedModule = Join-Path $target 'SkellCast.vst3\Contents\x86_64-win\SkellCast.vst3'
     $moduleBeforeBackupGuard = Get-Hash $installedModule
     Invoke-ExpectedFailure {
         & $installer -PackageRoot $packageV2 -Vst3Directory $target -BackupRoot $redirectedBackupRoot -Confirm:$false
     } 'Installer accepted a junction as the backup root during update.'
     Assert ((Get-Hash $installedModule) -eq $moduleBeforeBackupGuard) 'Rejected backup-root junction changed the installed module.'
-    Assert (-not (Test-Path -LiteralPath (Join-Path $backupRootTarget 'SkellCast'))) 'Installer wrote backups through a redirected backup root.'
+    Assert (@(Get-ChildItem -LiteralPath $backupRootTarget -Force).Count -eq 0) 'Installer wrote backups through a redirected backup root.'
     Remove-TestJunction $redirectedBackupRoot
 
     $script:passed = $true
